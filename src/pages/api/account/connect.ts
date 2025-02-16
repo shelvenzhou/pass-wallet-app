@@ -1,4 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { Core } from '@walletconnect/core';
+import { WalletKit, IWalletKit } from '@reown/walletkit';
 
 export default async function handler(
   req: NextApiRequest,
@@ -12,13 +14,29 @@ export default async function handler(
   try {
     const { uri } = req.body;
 
+    console.log("WalletConnect URI:", uri);
+
     if (!uri) {
       return res.status(400).json({ error: 'WalletConnect URI is required' });
     }
 
-    // TODO: Implement your WalletConnect session creation logic here
-    // This is where you would initialize the WalletConnect client
-    // and establish the connection using the provided URI
+    // Initialize WalletKit
+    const core = new Core({
+      projectId: process.env.WALLETKIT_PROJECT_ID,
+    });
+
+    const walletKit = await WalletKit.init({
+      core,
+      metadata: {
+        name: 'Pass Wallet',
+        description: 'Pass Wallet',
+        url: 'https://arxiv.org/abs/2412.02634',
+        icons: []
+      }
+    });
+
+    // Pair with the provided URI
+    await walletKit.pair({ uri });
 
     res.status(200).json({ success: true });
   } catch (error) {

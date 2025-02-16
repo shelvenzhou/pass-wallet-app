@@ -14,7 +14,7 @@ const Home: NextPage = () => {
     <div className={styles.container}>
       <Head>
         <title>PASS Wallet</title>
-        <meta name="description" content="Manage your PASS accounts" />
+        <meta name="description" content="Manage your PassWallet accounts" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
@@ -23,13 +23,13 @@ const Home: NextPage = () => {
       <main className={styles.main}>
         {!isConnected ? (
           <div className={styles.connectContainer}>
-            <h1>Welcome to PASS Wallet</h1>
+            <h1>Welcome to PassWallet</h1>
             <p>Connect your wallet to get started</p>
             <ConnectButton />
           </div>
         ) : (
           <div className={styles.welcomeContainer}>
-            <h1>Welcome to PASS Wallet</h1>
+            <h1>Welcome to PassWallet</h1>
             <p>Connected Account: {address}</p>
             <AccountList />
           </div>
