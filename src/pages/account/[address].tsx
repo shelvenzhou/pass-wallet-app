@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import styles from '../../styles/Home.module.css';
 import Navbar from '../../components/Navbar';
 import { useAccount } from 'wagmi';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import TransferModal from '../../components/TransferModal';
 
 
@@ -28,50 +28,39 @@ const AccountDetailsPage: NextPage = () => {
   const { address: accountAddress } = router.query;
   const { isConnected } = useAccount();
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [accountDetails, setAccountDetails] = useState<{
+    name: string;
+    balance: string;
+    owner: string;
+    assets: Asset[];
+    transactions: Transaction[];
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Mock data - replace with actual data fetching
-  const accountDetails = {
-    name: 'Main Account',
-    balance: '1.5 ETH',
-    owner: useAccount().address,
-    assets: [
-      {
-        symbol: 'ETH',
-        name: 'Ethereum',
-        balance: '1.5',
-        value: '$3,450.00',
-        // icon: '/eth-icon.svg'
-      },
-      {
-        symbol: 'USDC',
-        name: 'USD Coin',
-        balance: '1,000.00',
-        value: '$1,000.00',
-        // icon: '/usdc-icon.svg'
-      },
-      {
-        symbol: 'WETH',
-        name: 'Wrapped Ethereum',
-        balance: '0.5',
-        value: '$1,150.00',
-        // icon: '/weth-icon.svg'
+  useEffect(() => {
+    const fetchAccountDetails = async () => {
+      if (!accountAddress) return;
+      
+      try {
+        setIsLoading(true);
+        // Update the API path to match your file structure
+        const response = await fetch(`/api/account/${accountAddress}`);
+        const data = await response.json();
+        
+        if (response.ok) {
+          setAccountDetails(data);
+        } else {
+          console.error('Failed to fetch account details:', data);
+        }
+      } catch (error) {
+        console.error('Error fetching account details:', error);
+      } finally {
+        setIsLoading(false);
       }
-    ] as Asset[],
-    transactions: [
-      {
-        hash: '0x123...abc',
-        type: 'send',
-        amount: '0.1 ETH',
-        timestamp: '2024-02-17 14:30',
-      },
-      {
-        hash: '0x456...def',
-        type: 'receive',
-        amount: '0.5 ETH',
-        timestamp: '2024-02-17 12:15',
-      },
-    ] as Transaction[],
-  };
+    };
+
+    fetchAccountDetails();
+  }, [accountAddress]);
 
   const cardStyle = {
     padding: '24px',
@@ -110,7 +99,11 @@ const AccountDetailsPage: NextPage = () => {
           <div className={styles.connectContainer}>
             <p>Please connect your wallet to view account details</p>
           </div>
-        ) : (
+        ) : isLoading ? (
+          <div className={styles.loadingContainer}>
+            <p>Loading account details...</p>
+          </div>
+        ) : accountDetails ? (
           <>
             <div style={{ width: '100%', maxWidth: '800px' }}>
               <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -192,6 +185,10 @@ const AccountDetailsPage: NextPage = () => {
               assets={accountDetails.assets}
             />
           </>
+        ) : (
+          <div className={styles.errorContainer}>
+            <p>Failed to load account details</p>
+          </div>
         )}
       </main>
     </div>
