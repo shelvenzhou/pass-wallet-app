@@ -6,11 +6,13 @@ const Navbar = () => {
     <nav className={styles.navbar}>
       <div className={styles.leftSection}>
         <div className={styles.logo}>
-           📘 PassWallet
+          <a href="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+            📘 PassWallet
+          </a>
         </div>
         <div className={styles.navLinks}>
-          <a href="/" className={styles.navLink}>Send ETH</a>
-          <a href="/mint" className={styles.navLink}>Mint NFT</a>
+          {/* <a href="/" className={styles.navLink}>Send ETH</a>
+          <a href="/mint" className={styles.navLink}>Mint NFT</a> */}
         </div>
       </div>
       

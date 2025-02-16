@@ -4,6 +4,10 @@ import Head from 'next/head';
 import styles from '../styles/Home.module.css';
 import { useAccount } from 'wagmi';
 import Navbar from '../components/Navbar';
+import AccountList from '../components/AccountList';
+
+// TODO: change this to the actual PASS Wallet address
+const PASS_WALLET_ADDRESS = "0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEadbEefdEadb"
 
 const Home: NextPage = () => {
   const { address, isConnected } = useAccount();
@@ -11,8 +15,8 @@ const Home: NextPage = () => {
   return (
     <div className={styles.container}>
       <Head>
-        <title>TreeHacks DApp</title>
-        <meta name="description" content="Simple ETH transfer application" />
+        <title>PASS Wallet</title>
+        <meta name="description" content="Manage your PASS accounts" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
@@ -29,6 +33,7 @@ const Home: NextPage = () => {
           <div className={styles.welcomeContainer}>
             <h1>Welcome to PASS Wallet</h1>
             <p>Connected Account: {address}</p>
+            <AccountList />
           </div>
         )}
       </main>
