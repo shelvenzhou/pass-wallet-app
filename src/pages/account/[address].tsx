@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import TransferModal from '../../components/TransferModal';
 import WalletConnectModal from '../../components/WalletConnect';
 
+
 interface Transaction {
   hash: string;
   type: 'send' | 'receive';
@@ -38,6 +39,12 @@ const AccountDetailsPage: NextPage = () => {
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  useEffect(() => {
+    if (!isConnected) {
+      router.push('/');
+    }
+  }, [isConnected, router]);
+  
   useEffect(() => {
     const fetchAccountDetails = async () => {
       if (!accountAddress) return;

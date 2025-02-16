@@ -6,8 +6,6 @@ import { useAccount } from 'wagmi';
 import Navbar from '../components/Navbar';
 import AccountList from '../components/AccountList';
 
-// TODO: change this to the actual PASS Wallet address
-const PASS_WALLET_ADDRESS = "0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEadbEefdEadb"
 
 const Home: NextPage = () => {
   const { address, isConnected } = useAccount();
@@ -40,7 +38,7 @@ const Home: NextPage = () => {
 
       <footer className={styles.footer}>
         <a
-          href="https://rainbow.me"
+          href="https://blockchain.stanford.edu"
           rel="noopener noreferrer"
           target="_blank"
         >

@@ -41,7 +41,7 @@ export default async function handler(
       {
         symbol: 'USDC',
         name: 'USD Coin',
-        balance: '1,001.00',
+        balance: '1,000.00',
         value: '$1,000.00',
       },
       {
