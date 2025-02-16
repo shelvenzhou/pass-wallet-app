@@ -100,3 +100,24 @@
     flex-direction: column;
   }
 }
+
+.connectContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  text-align: center;
+}
+
+.welcomeContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.welcomeContainer p {
+  color: #666;
+  font-size: 1.1rem;
+}
