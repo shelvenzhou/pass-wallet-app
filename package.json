@@ -17,8 +17,11 @@
     "wagmi": "^2.14.7"
   },
   "devDependencies": {
+    "@reown/walletkit": "^1.2.0",
     "@types/node": "^20.14.8",
     "@types/react": "^19.0.6",
+    "@walletconnect/core": "^2.18.0",
+    "@walletconnect/utils": "^2.18.0",
     "typescript": "5.5.2"
   }
 }

@@ -6,7 +6,7 @@ import Navbar from '../../components/Navbar';
 import { useAccount } from 'wagmi';
 import { useState, useEffect } from 'react';
 import TransferModal from '../../components/TransferModal';
-
+import WalletConnectModal from '../../components/WalletConnect';
 
 interface Transaction {
   hash: string;
@@ -28,6 +28,7 @@ const AccountDetailsPage: NextPage = () => {
   const { address: accountAddress } = router.query;
   const { isConnected } = useAccount();
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [isWalletConnectModalOpen, setIsWalletConnectModalOpen] = useState(false);
   const [accountDetails, setAccountDetails] = useState<{
     name: string;
     balance: string;
@@ -109,7 +110,12 @@ const AccountDetailsPage: NextPage = () => {
               <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h1 className={styles.title}>{accountDetails.name}</h1>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                  <button style={buttonStyle}>WalletConnect Login</button>
+                <button 
+                  style={buttonStyle}
+                  onClick={() => setIsWalletConnectModalOpen(true)}
+                >
+                  WalletConnect Login
+                </button>
                   <button 
                     style={buttonStyle}
                     onClick={() => setIsTransferModalOpen(true)}
@@ -183,6 +189,10 @@ const AccountDetailsPage: NextPage = () => {
               isOpen={isTransferModalOpen}
               onClose={() => setIsTransferModalOpen(false)}
               assets={accountDetails.assets}
+            />
+            <WalletConnectModal
+              isOpen={isWalletConnectModalOpen}
+              onClose={() => setIsWalletConnectModalOpen(false)}
             />
           </>
         ) : (
