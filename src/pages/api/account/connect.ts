@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { Core } from '@walletconnect/core';
 import { WalletKit, IWalletKit } from '@reown/walletkit';
 
+const address = process.env.NEXT_PUBLICPASS_WALLET_ADDRESS;
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -14,7 +16,7 @@ export default async function handler(
   try {
     const { uri } = req.body;
 
-    console.log("WalletConnect URI:", uri);
+    // console.log("WalletConnect URI:", uri);
 
     if (!uri) {
       return res.status(400).json({ error: 'WalletConnect URI is required' });
@@ -22,7 +24,7 @@ export default async function handler(
 
     // Initialize WalletKit
     const core = new Core({
-      projectId: process.env.WALLETKIT_PROJECT_ID,
+      projectId: process.env.NEXT_PUBLIC_PROJECT_ID,
     });
 
     const walletKit = await WalletKit.init({
@@ -35,28 +37,35 @@ export default async function handler(
       }
     });
 
-    // Add event listeners before pairing
-    walletKit.on('session_proposal', async (proposal) => {
-      try {
-        await walletKit.approveSession({
-          id: proposal.id,
-          namespaces: {
-            eip155: {
-              chains: ["eip155:1", "eip155:137"],
-              methods: ["eth_sendTransaction", "personal_sign"],
-              events: ["accountsChanged", "chainChanged"],
-              accounts: []
+    // Create a promise to wait for the session proposal
+    const sessionPromise = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Session proposal timeout'));
+      }, 30000); // 30 second timeout
+
+      walletKit.on('session_proposal', async (proposal) => {
+        clearTimeout(timeout);
+        try {
+          await walletKit.approveSession({
+            id: proposal.id,
+            namespaces: {
+              eip155: {
+                chains: ["eip155:11155111"],
+                methods: ["eth_sendTransaction", "personal_sign"],
+                events: ["accountsChanged", "chainChanged"],
+                accounts: [`eip155:11155111:${address}`],
+              }
             }
-          }
-        });
-      } catch (error) {
-        console.error('Failed to approve session:', error);
-      }
+          });
+          resolve(proposal);
+        } catch (error) {
+          reject(error);
+        }
+      });
     });
-
-    // Now pair with the URI
     await walletKit.pair({ uri });
-
+    const session = await sessionPromise;
+    console.log("Session:", session);
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('WalletConnect error:', error);

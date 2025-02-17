@@ -40,13 +40,13 @@ class WalletKitService {
 
     try {
       const core = new Core({
-        projectId: process.env.WALLETKIT_PROJECT_ID
+        projectId: process.env.NEXT_PUBLIC_PROJECT_ID
       });
 
       const client = await WalletKit.init({
         core,
         metadata: {
-          name: 'Pass Wallet',
+          name: 'PassWallet',
           description: 'Pass Wallet',
           url: 'https://arxiv.org/abs/2412.02634',
           icons: []
@@ -100,34 +100,37 @@ class WalletKitService {
   }
 
   private handleSessionProposal = async (proposal: any) => {
+    console.log("Inside handleSessionProposal function");
     if (!this.walletKit.client) throw new Error('WalletKit not initialized');
 
     const { proposer } = proposal.params;
     const origin = proposer.metadata.url;
+    console.log("Origin:", origin);
 
-    if (!WHITELISTED_ORIGINS.includes(origin)) {
-      await this.walletKit.client.rejectSession({
-        id: proposal.id,
-        reason: {
-          code: 4001,
-          message: 'Domain not whitelisted'
-        }
-      });
-      return;
-    }
+    // if (!WHITELISTED_ORIGINS.includes(origin)) {
+    //   await this.walletKit.client.rejectSession({
+    //     id: proposal.id,
+    //     reason: {
+    //       code: 4001,
+    //       message: 'Domain not whitelisted'
+    //     }
+    //   });
+    //   return;
+    // }
 
-    try {
-      await this.walletKit.client.approveSession({
-        id: proposal.id,
-        namespaces: this.supportedNamespaces
-      });
-    } catch (error) {
-      console.error('Failed to approve session:', error);
-      throw error;
-    }
+    // try {
+    //   await this.walletKit.client.approveSession({
+    //     id: proposal.id,
+    //     namespaces: this.supportedNamespaces
+    //   });
+    // } catch (error) {
+    //   console.error('Failed to approve session! Error:', error);
+    //   throw error;
+    // }
   };
 
   private handleSessionRequest = async (event: any) => {
+    console.log("Inside handleSessionRequest function");
     if (!this.walletKit.client) throw new Error('WalletKit not initialized');
 
     const { request, chainId } = event.params;
@@ -172,6 +175,7 @@ class WalletKitService {
   };
 
   private handleSessionAuthenticate = async (event: any) => {
+    console.log("Inside handleSessionAuthenticate function");
     if (!this.walletKit.client) throw new Error('WalletKit not initialized');
     console.log('Inside handleSessionAuthenticate function');
     console.log('Full event object:', JSON.stringify(event, null, 2));
