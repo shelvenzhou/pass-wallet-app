@@ -6,10 +6,12 @@ import Navbar from '../../components/Navbar';
 import { useAccount } from 'wagmi';
 import { useState, useEffect } from 'react';
 import TransferModal from '../../components/TransferModal';
-import { WalletConnectModal, WalletKitInitialize } from '../../components/WalletConnectModal';
 import MessageModal from '../../components/MessageModal';
-import { useConnectionDialog } from '../../hooks/useConnectionDialog';
+
 import { useWalletStore } from '../../store/walletStore';
+import { toast } from 'react-hot-toast';
+import { Core } from '@walletconnect/core';
+import { IWalletKit, WalletKit } from '@reown/walletkit';
 
 interface Transaction {
   hash: string;
@@ -26,12 +28,17 @@ interface Asset {
   icon?: string;
 }
 
+interface MessageRequest {
+  type: 'proposal' | 'request';
+  message: string;
+  dappUrl: string;
+}
+
 const AccountDetailsPage: NextPage = () => {
   const router = useRouter();
   const { address: accountAddress } = router.query;
   const { isConnected } = useAccount();
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
-  const [isWalletConnectModalOpen, setIsWalletConnectModalOpen] = useState(false);
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
   const [accountDetails, setAccountDetails] = useState<{
@@ -42,24 +49,37 @@ const AccountDetailsPage: NextPage = () => {
     transactions: Transaction[];
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { data } = useWalletStore();
 
-  const {
-    handleApproveProposal,
-    handleApproveSignRequest,
-    handleRejectProposal,
-    handleRejectRequest,
-    getMessage
-  } = useConnectionDialog(
-    data.requestEvent ? 'request' : 'proposal',
-    (open) => {
-      if (data.requestEvent) {
-        setIsMessageModalOpen(open);
-      } else {
-        setIsProposalModalOpen(open);
-      }
+  const [walletKit, setWalletKit] = useState<IWalletKit | null>(null);
+  const { data, setData } = useWalletStore();
+  const [messageRequest, setMessageRequest] = useState<MessageRequest | null>(null);
+
+  const handleApproveProposal = async () => {
+    console.log("Approve proposal");
+    toast.error("Approve proposal not implemented");
+  }
+
+  const handleRejectProposal = async () => {
+    console.log("Reject proposal");
+    toast.error("Reject proposal not implemented");
+  }
+
+  const handleApproveSignRequest = async () => {
+    console.log("Approve sign request");
+    toast.error("Approve sign request not implemented");
+  }
+
+  const handleRejectRequest = async () => {
+    console.log("Reject request");
+    toast.error("Reject request not implemented");
+  }
+
+  const getMessage = () => {
+    return {
+      message: "Hello, world!",
+      dappUrl: "https://example.com"
     }
-  );
+  }
 
   useEffect(() => {
     if (!isConnected) {
@@ -90,6 +110,63 @@ const AccountDetailsPage: NextPage = () => {
 
     fetchAccountDetails();
   }, [accountAddress]);
+
+  useEffect(() => {
+    const initializeWalletKit = async () => {
+      try {
+        const core = new Core({
+          projectId: process.env.NEXT_PUBLIC_PROJECT_ID,
+        });
+
+        // Initialize the walletkit
+        const walletKit = await WalletKit.init({
+          core,
+          metadata: {
+            name: 'PassWallet',
+            description: 'PassWallet',
+            url: 'blockchain.stanford.edu',
+            icons: []
+          }
+        });
+
+        setWalletKit(walletKit);
+
+        // Set up event listeners
+        walletKit.on('session_proposal', (proposal) => {
+          console.log('Session proposal received:', proposal);
+          console.log(proposal.params);
+          toast.success('Session proposal received' + proposal.id);
+          setIsProposalModalOpen(true);
+          setMessageRequest({
+            type: 'proposal',
+            message: "A DApp wants to connect to your wallet. Do you want to approve this connection?",
+            dappUrl: proposal.params.proposer.metadata.url
+          });
+          // TODO: Trigger the message modal
+          // setData({ proposal });
+        });
+
+        walletKit.on('session_request', (requestEvent) => {
+          console.log('Session request received:', requestEvent);
+          toast.success('Session request received');
+          // TODO: Trigger the message modal
+          // setData({ requestEvent });
+        });
+
+        walletKit.on('session_delete', (session) => {
+          console.log('Session deleted:', session);
+          toast.success('Session deleted');
+        });
+      } catch (error) {
+        console.error('Failed to initialize WalletKit:', error);
+        toast.error('Failed to initialize WalletKit');
+      }
+    };
+
+    initializeWalletKit();
+    console.log('WalletKit initialized');
+    console.log(walletKit?.getActiveSessions());
+  }, []);
 
   // Listen for changes in the walletStore data
   useEffect(() => {
@@ -123,6 +200,27 @@ const AccountDetailsPage: NextPage = () => {
     marginRight: '12px',
   };
 
+  const inputStyle = {
+    padding: '12px',
+    fontSize: '16px',
+    border: '1px solid #eaeaea',
+    borderRadius: '8px',
+    width: '100%',
+    marginBottom: '12px',
+  };
+
+  const handleConnect = async () => {
+    const uri = (document.getElementById('walletconnect-uri') as HTMLInputElement).value;
+    if (!walletKit) {
+      toast.error('WalletKit not initialized');
+      return;
+    }
+    await walletKit.pair({ uri });
+    toast.success('WalletConnect session established');
+    // Log the active sessions
+    console.log(walletKit.getActiveSessions());      
+  };
+
   return (
     <div className={styles.container}>
       <Head>
@@ -148,12 +246,6 @@ const AccountDetailsPage: NextPage = () => {
               <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h1 className={styles.title}>{accountDetails.name}</h1>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                <button 
-                  style={buttonStyle}
-                  onClick={() => setIsWalletConnectModalOpen(true)}
-                >
-                  WalletConnect Login
-                </button>
                   <button 
                     style={buttonStyle}
                     onClick={() => setIsTransferModalOpen(true)}
@@ -169,7 +261,10 @@ const AccountDetailsPage: NextPage = () => {
                 <p>Balance: {accountDetails.balance}</p>
                 <p>Owner: {accountDetails.owner}</p>
               </div>
-              <button onClick={() => setIsMessageModalOpen(true)}>Test Message Modal</button>
+              <div style={cardStyle}>
+                <input style={inputStyle} type="text" id="walletconnect-uri" placeholder="Enter Walletconnect URI" />
+                <button style={buttonStyle} onClick={handleConnect}>Walletconnect Login</button>
+              </div>
               <div style={cardStyle}>
                 <h2>Assets</h2>
                 {accountDetails.assets.map((asset, index) => (
@@ -199,7 +294,7 @@ const AccountDetailsPage: NextPage = () => {
                   </div>
                 ))}
               </div>
-
+              
               <div style={cardStyle}>
                 <h2>Recent Transactions</h2>
                 {accountDetails.transactions.map((tx, index) => (
@@ -223,15 +318,10 @@ const AccountDetailsPage: NextPage = () => {
                 ))}
               </div>
             </div>
-            <WalletKitInitialize />
             <TransferModal
               isOpen={isTransferModalOpen}
               onClose={() => setIsTransferModalOpen(false)}
               assets={accountDetails.assets}
-            />
-            <WalletConnectModal
-              isOpen={isWalletConnectModalOpen}
-              onClose={() => setIsWalletConnectModalOpen(false)}
             />
             <MessageModal
               isOpen={isMessageModalOpen}
@@ -246,8 +336,8 @@ const AccountDetailsPage: NextPage = () => {
               onClose={() => setIsProposalModalOpen(false)}
               onSign={handleApproveProposal}
               onReject={handleRejectProposal}
-              message={"A dApp wants to connect to your wallet. Do you want to approve this connection?\n\n" + data.proposal?.params?.proposer?.metadata?.description}
-              dappUrl={data.proposal?.params?.proposer?.metadata?.url}
+              message={messageRequest?.message}
+              dappUrl={messageRequest?.dappUrl}
             />
           </>
         ) : (

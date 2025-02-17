@@ -15,56 +15,15 @@ interface ModalData {
 }
 
 export interface WalletState {
-  // Modal and session data
   data: ModalData;
-  activeSessions: Record<string, SessionTypes.Struct>;
-  
-  // Wallet instances
-  walletKit: IWalletKit | null;
-  walletClient: WalletClient | null;
-  walletAccount: `0x${string}` | null;
-  
-  // Actions
   setData: (data: ModalData) => void;
+  activeSessions: Record<string, SessionTypes.Struct>;
   setActiveSessions: (sessions: Record<string, SessionTypes.Struct>) => void;
-  clearData: () => void;
-  setWalletKit: (kit: IWalletKit | null) => void;
-  setWalletAccount: (account: `0x${string}` | null) => void;
 }
 
-export const useWalletStore = create<WalletState>((set, get) => ({
-  // Initial state
+export const useWalletStore = create<WalletState>((set) => ({
   data: {},
+  setData: (data) => set({ data }),
   activeSessions: {},
-  walletKit: null,
-  walletClient: null,
-  walletAccount: null,
-  
-  // Actions
-  setData: (data) => set((state) => ({ 
-    data: { ...state.data, ...data } 
-  })),
-  
-  setActiveSessions: (sessions) => set({ 
-    activeSessions: sessions 
-  }),
-  
-  clearData: () => set({ 
-    data: {} 
-  }),
-  
-  setWalletKit: (kit) => set({ 
-    walletKit: kit 
-  }),
-  
-  setWalletAccount: (account) => set({ 
-    walletAccount: account 
-  }),
+  setActiveSessions: (sessions) => set({ activeSessions: sessions }),
 }));
-
-// Helper functions that use the store
-export const getWalletKit = () => useWalletStore.getState().walletKit;
-export const getWalletAccount = () => useWalletStore.getState().walletAccount;
-export const getAddress = () => useWalletStore.getState().walletAccount; 
-export const getWalletClient = () => useWalletStore.getState().walletClient;
-export const setWalletKit = (kit: IWalletKit | null) => useWalletStore.getState().setWalletKit(kit);
