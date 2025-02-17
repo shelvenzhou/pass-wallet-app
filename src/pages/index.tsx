@@ -5,10 +5,26 @@ import styles from '../styles/Home.module.css';
 import { useAccount } from 'wagmi';
 import Navbar from '../components/Navbar';
 import AccountList from '../components/AccountList';
+import { useEffect } from 'react';
+import { walletKitService } from '../services/walletkit';
 
 
 const Home: NextPage = () => {
   const { address, isConnected } = useAccount();
+
+  useEffect(() => {
+    const initializeWalletKit = async () => {
+      if (isConnected && address) {
+        try {
+          await walletKitService.initialize([address]);
+        } catch (error) {
+          console.error('Failed to initialize WalletKit:', error);
+        }
+      }
+    };
+
+    initializeWalletKit();
+  }, [isConnected, address]);
 
   return (
     <div className={styles.container}>

@@ -35,7 +35,26 @@ export default async function handler(
       }
     });
 
-    // Pair with the provided URI
+    // Add event listeners before pairing
+    walletKit.on('session_proposal', async (proposal) => {
+      try {
+        await walletKit.approveSession({
+          id: proposal.id,
+          namespaces: {
+            eip155: {
+              chains: ["eip155:1", "eip155:137"],
+              methods: ["eth_sendTransaction", "personal_sign"],
+              events: ["accountsChanged", "chainChanged"],
+              accounts: []
+            }
+          }
+        });
+      } catch (error) {
+        console.error('Failed to approve session:', error);
+      }
+    });
+
+    // Now pair with the URI
     await walletKit.pair({ uri });
 
     res.status(200).json({ success: true });
