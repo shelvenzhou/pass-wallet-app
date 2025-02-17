@@ -16,7 +16,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Get private key from environment
-    const privateKey = process.env.NEXT_PUBLIC_PRIVATE_KEY;
+    const privateKey = process.env.NEXT_PUBLIC_PASS_WALLET_PRIVATE_KEY;
     if (!privateKey) {
       return res.status(500).json({ error: 'Private key not configured' });
     }

@@ -35,6 +35,7 @@ interface MessageRequest {
   type: 'proposal' | 'request';
   message: string;
   dappUrl: string;
+  id: number;
 }
 
 const AccountDetailsPage: NextPage = () => {
@@ -93,7 +94,51 @@ const AccountDetailsPage: NextPage = () => {
 
   const handleApproveSignRequest = async () => {
     console.log("Approve sign request");
-    toast.error("Approve sign request not implemented");
+    console.log(messageRequest?.message);
+    console.log(accountAddress);
+    console.log(walletKit);
+    if (!messageRequest?.message || !accountAddress || !walletKit) {
+      toast.error("Invalid message or account address");
+      return;
+    }
+  
+    try {
+      const response = await fetch('/api/sign', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: messageRequest.message,
+          address: accountAddress,
+        }),
+      });
+  
+      if (!response.ok) {
+        throw new Error('Failed to sign message');
+      }
+  
+      const { signature } = await response.json();
+      console.log(signature);
+      toast.success("Message signed successfully "+signature);
+      // Send signature back to DApp
+      await walletKit.respondSessionRequest({
+        topic: messageRequest.id.toString(),
+        response: {
+          id: messageRequest.id,
+          result: signature,
+          jsonrpc: "2.0",
+        },
+      });
+      
+      // Close the message modal after successful signing
+      setIsMessageModalOpen(false);
+      toast.success("Message signed successfully");
+      
+    } catch (error) {
+      console.error('Error signing message:', error);
+      toast.error("Failed to sign message");
+    }
   }
 
   const handleRejectRequest = async () => {
@@ -169,10 +214,9 @@ const AccountDetailsPage: NextPage = () => {
           setMessageRequest({
             type: 'proposal',
             message: "A DApp wants to connect to your wallet. Do you want to approve this connection?",
-            dappUrl: proposal.params.proposer.metadata.url
+            dappUrl: proposal.params.proposer.metadata.url,
+            id: proposal.id
           });
-          // TODO: Trigger the message modal
-          // setData({ proposal });
         });
 
         walletKit.on('session_request', (requestEvent) => {
@@ -180,12 +224,13 @@ const AccountDetailsPage: NextPage = () => {
           toast.success('Session request received');
           console.log(requestEvent.params);
 
-          const message = requestEvent.params.request.params[0].data;
+          const message = requestEvent.params.request.params[1];
           
           setMessageRequest({
             type: 'request',
             message: message,
-            dappUrl: "https://example.com"
+            dappUrl: "https://example.com",
+            id: requestEvent.id
           });
           setIsMessageModalOpen(true);
         });
@@ -355,8 +400,8 @@ const AccountDetailsPage: NextPage = () => {
               onClose={() => setIsMessageModalOpen(false)}
               onSign={handleApproveSignRequest}
               onReject={handleRejectRequest}
-              message={getMessage().message}
-              dappUrl={getMessage().dappUrl}
+              message={messageRequest?.message}
+              dappUrl={messageRequest?.dappUrl}
             />
             <MessageModal
               isOpen={isProposalModalOpen}
