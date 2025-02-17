@@ -8,10 +8,13 @@ import { useState, useEffect } from 'react';
 import TransferModal from '../../components/TransferModal';
 import MessageModal from '../../components/MessageModal';
 
-import { useWalletStore } from '../../store/walletStore';
 import { toast } from 'react-hot-toast';
 import { Core } from '@walletconnect/core';
 import { IWalletKit, WalletKit } from '@reown/walletkit';
+
+import { buildApprovedNamespaces } from '@walletconnect/utils';
+import { ProposalTypes } from '@walletconnect/types';
+import { SUPPORTED_CHAINS, SUPPORTED_METHODS, SUPPORTED_EVENTS } from '../../constants';
 
 interface Transaction {
   hash: string;
@@ -49,14 +52,38 @@ const AccountDetailsPage: NextPage = () => {
     transactions: Transaction[];
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [proposalParams, setProposalParams] = useState<ProposalTypes.Struct | null>(null);
 
   const [walletKit, setWalletKit] = useState<IWalletKit | null>(null);
-  const { data, setData } = useWalletStore();
   const [messageRequest, setMessageRequest] = useState<MessageRequest | null>(null);
 
   const handleApproveProposal = async () => {
     console.log("Approve proposal");
-    toast.error("Approve proposal not implemented");
+    if (!walletKit) {
+      toast.error('WalletKit not initialized');
+      return;
+    }
+    console.log(proposalParams);
+    const approvedNamespaces = buildApprovedNamespaces({
+      proposal: proposalParams as ProposalTypes.Struct,
+      supportedNamespaces: {
+        eip155: {
+          chains: SUPPORTED_CHAINS,
+          methods: SUPPORTED_METHODS,
+          events: SUPPORTED_EVENTS,
+          accounts: [`eip155:11155111:${accountAddress}`],
+        },
+      },
+    });
+    console.log(approvedNamespaces);
+
+    await walletKit.approveSession({
+      id: parseInt(proposalParams!.id.toString()),
+      namespaces: approvedNamespaces,
+    });
+    console.log(walletKit.getActiveSessions());
+    toast.success("Session approved");
+    setIsProposalModalOpen(false);
   }
 
   const handleRejectProposal = async () => {
@@ -136,7 +163,9 @@ const AccountDetailsPage: NextPage = () => {
           console.log('Session proposal received:', proposal);
           console.log(proposal.params);
           toast.success('Session proposal received' + proposal.id);
+          setProposalParams(proposal.params);
           setIsProposalModalOpen(true);
+
           setMessageRequest({
             type: 'proposal',
             message: "A DApp wants to connect to your wallet. Do you want to approve this connection?",
@@ -149,8 +178,16 @@ const AccountDetailsPage: NextPage = () => {
         walletKit.on('session_request', (requestEvent) => {
           console.log('Session request received:', requestEvent);
           toast.success('Session request received');
-          // TODO: Trigger the message modal
-          // setData({ requestEvent });
+          console.log(requestEvent.params);
+
+          const message = requestEvent.params.request.params[0].data;
+          
+          setMessageRequest({
+            type: 'request',
+            message: message,
+            dappUrl: "https://example.com"
+          });
+          setIsMessageModalOpen(true);
         });
 
         walletKit.on('session_delete', (session) => {
@@ -167,16 +204,6 @@ const AccountDetailsPage: NextPage = () => {
     console.log('WalletKit initialized');
     console.log(walletKit?.getActiveSessions());
   }, []);
-
-  // Listen for changes in the walletStore data
-  useEffect(() => {
-    if (data.proposal) {
-      setIsProposalModalOpen(true);
-    }
-    if (data.requestEvent) {
-      setIsMessageModalOpen(true);
-    }
-  }, [data.proposal, data.requestEvent]);
 
   const cardStyle = {
     padding: '24px',
