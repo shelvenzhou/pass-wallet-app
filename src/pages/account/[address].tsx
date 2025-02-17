@@ -6,9 +6,10 @@ import Navbar from '../../components/Navbar';
 import { useAccount } from 'wagmi';
 import { useState, useEffect } from 'react';
 import TransferModal from '../../components/TransferModal';
-import WalletConnectModal from '../../components/WalletConnect';
-import ActiveSessions from '../../components/ActiveSessions';
+import { WalletConnectModal, WalletKitInitialize } from '../../components/WalletConnectModal';
 import MessageModal from '../../components/MessageModal';
+import { useConnectionDialog } from '../../hooks/useConnectionDialog';
+import { useWalletStore } from '../../store/walletStore';
 
 interface Transaction {
   hash: string;
@@ -32,6 +33,7 @@ const AccountDetailsPage: NextPage = () => {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isWalletConnectModalOpen, setIsWalletConnectModalOpen] = useState(false);
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
+  const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
   const [accountDetails, setAccountDetails] = useState<{
     name: string;
     balance: string;
@@ -40,6 +42,24 @@ const AccountDetailsPage: NextPage = () => {
     transactions: Transaction[];
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { data } = useWalletStore();
+
+  const {
+    handleApproveProposal,
+    handleApproveSignRequest,
+    handleRejectProposal,
+    handleRejectRequest,
+    getMessage
+  } = useConnectionDialog(
+    data.requestEvent ? 'request' : 'proposal',
+    (open) => {
+      if (data.requestEvent) {
+        setIsMessageModalOpen(open);
+      } else {
+        setIsProposalModalOpen(open);
+      }
+    }
+  );
 
   useEffect(() => {
     if (!isConnected) {
@@ -53,7 +73,6 @@ const AccountDetailsPage: NextPage = () => {
       
       try {
         setIsLoading(true);
-        // Update the API path to match your file structure
         const response = await fetch(`/api/account/${accountAddress}`);
         const data = await response.json();
         
@@ -71,6 +90,16 @@ const AccountDetailsPage: NextPage = () => {
 
     fetchAccountDetails();
   }, [accountAddress]);
+
+  // Listen for changes in the walletStore data
+  useEffect(() => {
+    if (data.proposal) {
+      setIsProposalModalOpen(true);
+    }
+    if (data.requestEvent) {
+      setIsMessageModalOpen(true);
+    }
+  }, [data.proposal, data.requestEvent]);
 
   const cardStyle = {
     padding: '24px',
@@ -141,7 +170,6 @@ const AccountDetailsPage: NextPage = () => {
                 <p>Owner: {accountDetails.owner}</p>
               </div>
               <button onClick={() => setIsMessageModalOpen(true)}>Test Message Modal</button>
-              <ActiveSessions />
               <div style={cardStyle}>
                 <h2>Assets</h2>
                 {accountDetails.assets.map((asset, index) => (
@@ -195,6 +223,7 @@ const AccountDetailsPage: NextPage = () => {
                 ))}
               </div>
             </div>
+            <WalletKitInitialize />
             <TransferModal
               isOpen={isTransferModalOpen}
               onClose={() => setIsTransferModalOpen(false)}
@@ -207,8 +236,18 @@ const AccountDetailsPage: NextPage = () => {
             <MessageModal
               isOpen={isMessageModalOpen}
               onClose={() => setIsMessageModalOpen(false)}
-              onSign={() => console.log('message sign')}
-              onReject={() => console.log('message reject')}
+              onSign={handleApproveSignRequest}
+              onReject={handleRejectRequest}
+              message={getMessage().message}
+              dappUrl={getMessage().dappUrl}
+            />
+            <MessageModal
+              isOpen={isProposalModalOpen}
+              onClose={() => setIsProposalModalOpen(false)}
+              onSign={handleApproveProposal}
+              onReject={handleRejectProposal}
+              message={"A dApp wants to connect to your wallet. Do you want to approve this connection?\n\n" + data.proposal?.params?.proposer?.metadata?.description}
+              dappUrl={data.proposal?.params?.proposer?.metadata?.url}
             />
           </>
         ) : (

@@ -1,15 +1,74 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import { useWalletStore } from '../store/walletStore';
+import { getWalletKit, setWalletKit } from '../utils/helper';
+import { IWalletKit, WalletKit } from '@reown/walletkit';
+import { Core } from '@walletconnect/core';
 
 interface WalletConnectModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+const WalletKitInitialize = () => {
+  const { setData } = useWalletStore();
+
+  useEffect(() => {
+    const initialiseWalletKit = async () => {
+      try {
+        const core = new Core({
+          projectId: process.env.NEXT_PUBLIC_PROJECT_ID,
+        });
+
+        // Initialize the walletkit
+        const walletKit = await WalletKit.init({
+          core,
+          metadata: {
+            name: 'PassWallet',
+            description: 'PassWallet',
+            url: 'blockchain.stanford.edu',
+            icons: []
+          }
+        });
+
+        // Set up event listeners
+        walletKit.on('session_proposal', (proposal) => {
+          console.log('Session proposal received:', proposal);
+          toast.success('Session proposal received');
+          setData({ proposal });
+        });
+
+        walletKit.on('session_request', (requestEvent) => {
+          console.log('Session request received:', requestEvent);
+          toast.success('Session request received');
+          setData({ requestEvent });
+        });
+
+        walletKit.on('session_delete', (session) => {
+          console.log('Session deleted:', session);
+          toast.success('Session deleted');
+        });
+
+        setWalletKit(walletKit);
+      } catch (error) {
+        console.error('Failed to initialize WalletKit:', error);
+        toast.error('Failed to initialize WalletKit');
+      }
+    };
+
+    initialiseWalletKit();
+    console.log('WalletKit initialized');
+  }, [setData]);
+
+  return null;
+};
+
 const WalletConnectModal = ({ isOpen, onClose }: WalletConnectModalProps) => {
   const [uri, setUri] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { setActiveSessions } = useWalletStore();
+  const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
 
   if (!isOpen) return null;
 
@@ -62,24 +121,21 @@ const WalletConnectModal = ({ isOpen, onClose }: WalletConnectModalProps) => {
       return;
     }
 
+    const walletKit = getWalletKit();
+    if (!walletKit) {
+      setError('WalletKit not initialized');
+      toast.error('WalletKit not initialized');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch('/api/account/connect', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uri }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to establish WalletConnect session');
-      }
-
+      await walletKit.pair({ uri });
+      
+      // After successful pairing, update the active sessions
+      setActiveSessions(walletKit.getActiveSessions());
       toast.success('WalletConnect session established');
       onClose();
     } catch (err) {
@@ -90,6 +146,10 @@ const WalletConnectModal = ({ isOpen, onClose }: WalletConnectModalProps) => {
       setIsLoading(false);
     }
   };
+
+  const handleApproveProposal = () => {
+    console.log('Approve Proposal');
+  }
 
   return (
     <div style={modalOverlayStyle} onClick={onClose}>
@@ -133,4 +193,4 @@ const WalletConnectModal = ({ isOpen, onClose }: WalletConnectModalProps) => {
   );
 };
 
-export default WalletConnectModal;
+export { WalletConnectModal, WalletKitInitialize};
