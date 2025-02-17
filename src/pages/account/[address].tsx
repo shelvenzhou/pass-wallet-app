@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import TransferModal from '../../components/TransferModal';
 import WalletConnectModal from '../../components/WalletConnect';
 import ActiveSessions from '../../components/ActiveSessions';
+import MessageModal from '../../components/MessageModal';
 
 interface Transaction {
   hash: string;
@@ -30,6 +31,7 @@ const AccountDetailsPage: NextPage = () => {
   const { isConnected } = useAccount();
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isWalletConnectModalOpen, setIsWalletConnectModalOpen] = useState(false);
+  const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [accountDetails, setAccountDetails] = useState<{
     name: string;
     balance: string;
@@ -138,6 +140,7 @@ const AccountDetailsPage: NextPage = () => {
                 <p>Balance: {accountDetails.balance}</p>
                 <p>Owner: {accountDetails.owner}</p>
               </div>
+              <button onClick={() => setIsMessageModalOpen(true)}>Test Message Modal</button>
               <ActiveSessions />
               <div style={cardStyle}>
                 <h2>Assets</h2>
@@ -200,6 +203,12 @@ const AccountDetailsPage: NextPage = () => {
             <WalletConnectModal
               isOpen={isWalletConnectModalOpen}
               onClose={() => setIsWalletConnectModalOpen(false)}
+            />
+            <MessageModal
+              isOpen={isMessageModalOpen}
+              onClose={() => setIsMessageModalOpen(false)}
+              onSign={() => console.log('message sign')}
+              onReject={() => console.log('message reject')}
             />
           </>
         ) : (
