@@ -1,11 +1,5 @@
 import { useCallback } from "react";
-import { useWalletStore } from "../store/walletStore";
-import {
-  getAddress,
-  getWalletAccount,
-  getWalletClient,
-  getWalletKit,
-} from "../utils/helper";
+import { useWalletStore, getWalletKit, getWalletAccount, getAddress, getWalletClient } from "../store/walletStore";
 import { buildApprovedNamespaces, getSdkError } from "@walletconnect/utils";
 import { ProposalTypes } from "@walletconnect/types";
 import { hexToString } from "viem";
@@ -104,7 +98,7 @@ export function useConnectionDialog(
         });
 
         // Respond to the session request with the signature
-        await walletKit.respondSessionRequest({
+        await walletKit!.respondSessionRequest({
           topic: data.requestEvent?.topic as string,
           response: {
             id: data.requestEvent?.id as number,
@@ -130,7 +124,7 @@ export function useConnectionDialog(
   const handleRejectProposal = useCallback(async () => {
     try {
       // Reject the session proposal with the user rejected reason
-      await walletKit.rejectSession({
+      await walletKit!.rejectSession({
         id: data.proposal?.id as number,
         reason: getSdkError("USER_REJECTED"),
       });
@@ -153,7 +147,7 @@ export function useConnectionDialog(
         },
       };
 
-      await walletKit.respondSessionRequest({
+      await walletKit!.respondSessionRequest({
         topic: data.requestEvent?.topic as string,
         response,
       });
