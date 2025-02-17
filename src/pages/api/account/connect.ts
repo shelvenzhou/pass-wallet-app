@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { Core } from '@walletconnect/core';
 import { WalletKit, IWalletKit } from '@reown/walletkit';
 import { privateKeyToAccount } from 'viem/accounts';
+import { useWalletStore } from '../../../store/walletStore';
+import { walletKitService } from '../../../services/walletkit';
 
 const address = process.env.NEXT_PUBLICPASS_WALLET_ADDRESS;
 const WHITELISTED_ORIGINS = ["https://opensea.io", "https://www.tally.xyz"];
@@ -22,68 +24,14 @@ const handleSessionRequests = (walletKit: IWalletKit) => {
     
     console.log('Received request:', methodRequest);
 
-    try {
-      switch (methodRequest.method) {
-        case 'personal_sign':
-          const [messageHex, account] = methodRequest.params;
-          console.log('Signing request:', { messageHex, account });
+    // Store the request in the global state for frontend to handle
+    useWalletStore.getState().setData({ 
+      requestEvent: request,
+      requestSession: activeSession
+    });
 
-          try {
-            const privateKey = process.env.NEXT_PUBLIC_PASS_WALLET_PRIVATE_KEY;
-            if (!privateKey) {
-              throw new Error('Private key not found in environment variables');
-            }
-
-            // Create an account from the private key
-            const account = privateKeyToAccount(privateKey as `0x${string}`);
-            
-            // Sign the message
-            const signature = await account.signMessage({ message: messageHex });
-            console.log('Generated signature:', signature);
-
-            await walletKit.respondSessionRequest({
-              topic,
-              response: { 
-                id, 
-                result: signature,
-                jsonrpc: '2.0' 
-              }
-            });
-            console.log('Successfully signed message');
-          } catch (error) {
-            console.error('Error signing message:', error);
-            throw error;
-          }
-          break;
-
-        case 'eth_sendTransaction':
-          // Handle transaction requests
-          const [transaction] = methodRequest.params;
-          // Here you would implement your transaction logic
-          const txHash = '0x...'; // Your transaction implementation
-          await walletKit.respondSessionRequest({
-            topic,
-            response: { id, result: txHash, jsonrpc: '2.0' }
-          });
-          break;
-
-        default:
-          throw new Error(`Unsupported method: ${methodRequest.method}`);
-      }
-    } catch (error) {
-      console.error('Request handling error:', error);
-      await walletKit.respondSessionRequest({
-        topic,
-        response: {
-          id,
-          error: {
-            code: 5000,
-            message: 'User rejected.'
-          },
-          jsonrpc: '2.0'
-        }
-      });
-    }
+    // The actual signing/transaction will be handled when the frontend calls back
+    // to a new API endpoint with the approval
   });
 };
 
@@ -97,68 +45,56 @@ export default async function handler(
   }
 
   try {
+    const walletKit = await walletKitService.initialize([address!]);
     const { uri } = req.body;
 
     if (!uri) {
       return res.status(400).json({ error: 'WalletConnect URI is required' });
     }
 
-    // Initialize WalletKit only once
-    if (!walletKit) {
-      walletKit = await WalletKit.init({
-        core,
-        metadata: {
-          name: 'Pass Wallet',
-          description: 'Pass Wallet',
-          url: 'https://arxiv.org/abs/2412.02634',
-          icons: []
-        }
-      });
+    // Add the request handler
+    handleSessionRequests(walletKit);
 
-      // Add the request handler
-      handleSessionRequests(walletKit);
+    // Set up persistent event listeners
+    walletKit.on('session_proposal', async (proposal) => {
+      const origin = proposal.params.proposer.metadata.url.trim();
+      
+      if (!WHITELISTED_ORIGINS.includes(origin)) {
+        console.log(`Rejecting session from non-whitelisted origin: ${origin}`);
+        await walletKit!.rejectSession({
+          id: proposal.id,
+          reason: {
+            code: 1,
+            message: 'Origin not whitelisted'
+          }
+        });
+        return;
+      }
 
-      // Set up persistent event listeners
-      walletKit.on('session_proposal', async (proposal) => {
-        const origin = proposal.params.proposer.metadata.url.trim();
-        
-        if (!WHITELISTED_ORIGINS.includes(origin)) {
-          console.log(`Rejecting session from non-whitelisted origin: ${origin}`);
-          await walletKit!.rejectSession({
-            id: proposal.id,
-            reason: {
-              code: 1,
-              message: 'Origin not whitelisted'
+      try {
+        const session = await walletKit!.approveSession({
+          id: proposal.id,
+          namespaces: {
+            eip155: {
+              chains: ["eip155:11155111"],
+              methods: ["eth_sendTransaction", "personal_sign"],
+              events: ["accountsChanged", "chainChanged"],
+              accounts: [`eip155:11155111:${address}`],
             }
-          });
-          return;
-        }
+          }
+        });
+        activeSession = session;
+        console.log("Session established:", session);
+      } catch (error) {
+        console.error('Failed to approve session:', error);
+      }
+    });
 
-        try {
-          const session = await walletKit!.approveSession({
-            id: proposal.id,
-            namespaces: {
-              eip155: {
-                chains: ["eip155:11155111"],
-                methods: ["eth_sendTransaction", "personal_sign"],
-                events: ["accountsChanged", "chainChanged"],
-                accounts: [`eip155:11155111:${address}`],
-              }
-            }
-          });
-          activeSession = session;
-          console.log("Session established:", session);
-        } catch (error) {
-          console.error('Failed to approve session:', error);
-        }
-      });
-
-      // Handle session deletion
-      walletKit.on('session_delete', () => {
-        console.log('Session deleted');
-        activeSession = null;
-      });
-    }
+    // Handle session deletion
+    walletKit.on('session_delete', () => {
+      console.log('Session deleted');
+      activeSession = null;
+    });
 
     // If we already have an active session, return it
     if (activeSession) {

@@ -2,20 +2,20 @@ import { Core } from '@walletconnect/core';
 import { WalletKit, IWalletKit } from '@reown/walletkit';
 import { WalletKitInstance } from './types';
 import { useWalletStore } from '../store/walletStore';
+import { SessionTypes } from '@walletconnect/types';
 
 const WHITELISTED_ORIGINS = [
   "https://opensea.io", 
   "https://tally.xyz/", 
   "https://app.uniswap.org",
-  "https://appkit-lab.reown.com"
+  "https://appkit-lab.reown.com",
+  "https://snapshot.box"
 ];
 
 class WalletKitService {
   private static instance: WalletKitService;
-  private walletKit: WalletKitInstance = {
-    client: null,
-    initialized: false
-  };
+  private walletKit: IWalletKit | null = null;
+  private core: InstanceType<typeof Core>;
 
   private supportedNamespaces = {
     eip155: {
@@ -26,7 +26,12 @@ class WalletKitService {
     }
   };
 
-  private constructor() {}
+  private constructor() {
+    this.core = new Core({
+      projectId: process.env.NEXT_PUBLIC_PROJECT_ID as string,
+      relayUrl: 'wss://relay.walletconnect.com'
+    });
+  }
 
   public static getInstance(): WalletKitService {
     if (!WalletKitService.instance) {
@@ -36,36 +41,28 @@ class WalletKitService {
   }
 
   public async initialize(addresses: string[]) {
-    if (this.walletKit.initialized) return this.walletKit.client;
-
-    try {
-      const core = new Core({
-        projectId: process.env.NEXT_PUBLIC_PROJECT_ID
-      });
-
-      const client = await WalletKit.init({
-        core,
+    if (!this.walletKit) {
+      this.walletKit = await WalletKit.init({
+        core: this.core,
         metadata: {
           name: 'PassWallet',
-          description: 'Pass Wallet',
-          url: 'https://arxiv.org/abs/2412.02634',
-          icons: []
+          description: 'PassWallet Application',
+          url: 'https://passwallet.xyz',
+          icons: ['https://passwallet.xyz/icon.png']
         }
       });
 
-      this.supportedNamespaces.eip155.accounts = addresses;
-      this.setupEventListeners(client);
-      
-      this.walletKit = {
-        client,
-        initialized: true
-      };
-
-      return client;
-    } catch (error) {
-      console.error('Failed to initialize WalletKit:', error);
-      throw error;
+      // Update the supported namespaces with the provided addresses
+      this.supportedNamespaces.eip155.accounts = addresses.map(addr => `eip155:1:${addr}`);
     }
+    return this.walletKit;
+  }
+
+  public getWalletKit(): IWalletKit {
+    if (!this.walletKit) {
+      throw new Error('WalletKit not initialized');
+    }
+    return this.walletKit;
   }
 
   private setupEventListeners(client: IWalletKit) {
@@ -101,7 +98,7 @@ class WalletKitService {
 
   private handleSessionProposal = async (proposal: any) => {
     console.log("Inside handleSessionProposal function");
-    if (!this.walletKit.client) throw new Error('WalletKit not initialized');
+    if (!this.walletKit) throw new Error('WalletKit not initialized');
 
     const { proposer } = proposal.params;
     const origin = proposer.metadata.url;
@@ -131,7 +128,7 @@ class WalletKitService {
 
   private handleSessionRequest = async (event: any) => {
     console.log("Inside handleSessionRequest function");
-    if (!this.walletKit.client) throw new Error('WalletKit not initialized');
+    if (!this.walletKit) throw new Error('WalletKit not initialized');
 
     const { request, chainId } = event.params;
     const { method, params } = request;
@@ -176,7 +173,7 @@ class WalletKitService {
 
   private handleSessionAuthenticate = async (event: any) => {
     console.log("Inside handleSessionAuthenticate function");
-    if (!this.walletKit.client) throw new Error('WalletKit not initialized');
+    if (!this.walletKit) throw new Error('WalletKit not initialized');
     console.log('Inside handleSessionAuthenticate function');
     console.log('Full event object:', JSON.stringify(event, null, 2));
     console.log('Session authenticate received:', event);
@@ -209,11 +206,18 @@ class WalletKitService {
     throw new Error('Message signing not implemented');
   }
 
-  public getClient() {
-    if (!this.walletKit.initialized) {
-      throw new Error('WalletKit not initialized. Call initialize() first.');
+  public getActiveSessions(): SessionTypes.Struct[] {
+    if (!this.walletKit) {
+      return [];
     }
-    return this.walletKit.client;
+    return Object.values(this.walletKit.getActiveSessions());
+  }
+
+  public async disconnectSession(topic: string) {
+    if (!this.walletKit) {
+      throw new Error('WalletKit not initialized');
+    }
+    await this.walletKit.disconnectSession({ topic, reason: { code: 4001, message: 'User disconnected' } });
   }
 }
 

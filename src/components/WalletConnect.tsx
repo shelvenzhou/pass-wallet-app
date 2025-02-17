@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import toast from 'react-hot-toast';
 
 interface WalletConnectModalProps {
   isOpen: boolean;
@@ -57,6 +58,7 @@ const WalletConnectModal = ({ isOpen, onClose }: WalletConnectModalProps) => {
   const handleConnect = async () => {
     if (!uri.trim()) {
       setError('Please enter a WalletConnect URI');
+      toast.error('Please enter a WalletConnect URI');
       return;
     }
 
@@ -78,9 +80,12 @@ const WalletConnectModal = ({ isOpen, onClose }: WalletConnectModalProps) => {
         throw new Error(data.error || 'Failed to establish WalletConnect session');
       }
 
+      toast.success('WalletConnect session established');
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }

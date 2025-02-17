@@ -7,7 +7,7 @@ import { useAccount } from 'wagmi';
 import { useState, useEffect } from 'react';
 import TransferModal from '../../components/TransferModal';
 import WalletConnectModal from '../../components/WalletConnect';
-
+import ActiveSessions from '../../components/ActiveSessions';
 
 interface Transaction {
   hash: string;
@@ -44,7 +44,7 @@ const AccountDetailsPage: NextPage = () => {
       router.push('/');
     }
   }, [isConnected, router]);
-  
+
   useEffect(() => {
     const fetchAccountDetails = async () => {
       if (!accountAddress) return;
@@ -138,7 +138,7 @@ const AccountDetailsPage: NextPage = () => {
                 <p>Balance: {accountDetails.balance}</p>
                 <p>Owner: {accountDetails.owner}</p>
               </div>
-
+              <ActiveSessions />
               <div style={cardStyle}>
                 <h2>Assets</h2>
                 {accountDetails.assets.map((asset, index) => (
