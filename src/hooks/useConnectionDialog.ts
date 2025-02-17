@@ -84,19 +84,25 @@ export function useConnectionDialog(
       console.log("request", data.requestEvent);
 
       if (data.requestEvent?.params?.request?.method === "personal_sign") {
-        // Get the message to sign
-        const requestParamsMessage =
-          data.requestEvent?.params?.request?.params[0];
-
-        // Convert the message to a string
-        const message = requestParamsMessage;
-
-        // Sign the message
-        const signature = await client.signMessage({
-          message,
-          account: getWalletAccount() as `0x${string}`,
+        const requestParamsMessage = data.requestEvent?.params?.request?.params[0];
+        
+        // Call the sign API endpoint
+        const response = await fetch('/api/sign', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: requestParamsMessage,
+          }),
         });
-
+  
+        if (!response.ok) {
+          throw new Error('Failed to sign message');
+        }
+  
+        const { signature } = await response.json();
+  
         // Respond to the session request with the signature
         await walletKit!.respondSessionRequest({
           topic: data.requestEvent?.topic as string,
@@ -106,17 +112,13 @@ export function useConnectionDialog(
             jsonrpc: "2.0",
           },
         });
+        
         onOpenChange(false);
         toast.success("Message signed successfully!");
-      } else if (
-        data.requestEvent?.params?.request?.method === "eth_sendTransaction"
-      ) {
-        onOpenChange(false);
-        throw new Error("Not supported");
       }
     } catch (error) {
       console.error("Error responding to session request:", error);
-      toast.error("Error");
+      toast.error("Error signing message");
     }
   }, [data.requestEvent, walletKit, onOpenChange]);
 
