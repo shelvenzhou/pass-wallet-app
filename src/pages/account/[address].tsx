@@ -12,7 +12,7 @@ import { toast } from 'react-hot-toast';
 import { Core } from '@walletconnect/core';
 import { IWalletKit, WalletKit } from '@reown/walletkit';
 
-import { buildApprovedNamespaces } from '@walletconnect/utils';
+import { buildApprovedNamespaces, getSdkError } from '@walletconnect/utils';
 import { ProposalTypes } from '@walletconnect/types';
 import { SUPPORTED_CHAINS, SUPPORTED_METHODS, SUPPORTED_EVENTS } from '../../constants';
 
@@ -36,6 +36,7 @@ interface MessageRequest {
   message: string;
   dappUrl: string;
   id: number;
+  topic?: string;
 }
 
 const AccountDetailsPage: NextPage = () => {
@@ -89,7 +90,11 @@ const AccountDetailsPage: NextPage = () => {
 
   const handleRejectProposal = async () => {
     console.log("Reject proposal");
-    toast.error("Reject proposal not implemented");
+    await walletKit?.rejectSession({
+      id: proposalParams!.id,
+      reason: getSdkError("USER_REJECTED")
+    });
+    toast.success("Reject proposal successful");
   }
 
   const handleApproveSignRequest = async () => {
@@ -121,9 +126,13 @@ const AccountDetailsPage: NextPage = () => {
       const { signature } = await response.json();
       console.log(signature);
       toast.success("Message signed successfully "+signature);
+      if (!messageRequest.topic) {
+        toast.error("Error: No topic found");
+        return;
+      }
       // Send signature back to DApp
       await walletKit.respondSessionRequest({
-        topic: messageRequest.id.toString(),
+        topic: messageRequest.topic,
         response: {
           id: messageRequest.id,
           result: signature,
@@ -143,7 +152,22 @@ const AccountDetailsPage: NextPage = () => {
 
   const handleRejectRequest = async () => {
     console.log("Reject request");
-    toast.error("Reject request not implemented");
+    if (!messageRequest?.topic) {
+      toast.error("Error: No topic found");
+      return;
+    }
+    await walletKit?.respondSessionRequest({
+      topic: messageRequest.topic,
+      response: {
+        id: messageRequest.id,
+        error: {
+          code: 5000,
+          message: "User rejected the request",
+        },
+        jsonrpc: "2.0",
+      },
+    });
+    toast.success("Reject request successful");
   }
 
   const getMessage = () => {
@@ -226,11 +250,13 @@ const AccountDetailsPage: NextPage = () => {
 
           const message = requestEvent.params.request.params[1];
           
+          // TODO: Pass the URL correctly.
           setMessageRequest({
             type: 'request',
             message: message,
             dappUrl: "https://example.com",
-            id: requestEvent.id
+            id: requestEvent.id,
+            topic: requestEvent.topic
           });
           setIsMessageModalOpen(true);
         });
