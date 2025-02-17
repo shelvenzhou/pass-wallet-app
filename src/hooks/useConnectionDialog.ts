@@ -49,8 +49,13 @@ export function useConnectionDialog(
   const handleApproveProposal = useCallback(async () => {
     try {
       const address = getAddress();
+      
+      if (!data.proposal?.id) {
+        throw new Error('No proposal ID found');
+      }
+
       const approvedNamespaces = buildApprovedNamespaces({
-        proposal: data.proposal?.params as ProposalTypes.Struct,
+        proposal: data.proposal.params as ProposalTypes.Struct,
         supportedNamespaces: {
           eip155: {
             chains: SUPPORTED_CHAINS,
@@ -61,13 +66,17 @@ export function useConnectionDialog(
         },
       });
 
+      console.log('Approving session with ID:', data.proposal.id);
+      console.log('Namespaces:', approvedNamespaces);
+
       // Approve the session
-      await walletKit.approveSession({
-        id: data.proposal?.id as number,
+      await walletKit!.approveSession({
+        id: parseInt(data.proposal.id.toString()),
         namespaces: approvedNamespaces,
       });
+
       // Update the active sessions after approval
-      setActiveSessions(walletKit.getActiveSessions());
+      setActiveSessions(walletKit!.getActiveSessions());
       toast.success("Session approved");
       onOpenChange(false);
     } catch (error) {
@@ -79,8 +88,7 @@ export function useConnectionDialog(
   // Called when the user approves the sign request
   const handleApproveSignRequest = useCallback(async () => {
     try {
-      const client = getWalletClient();
-
+      toast.success("Signing message");
       console.log("request", data.requestEvent);
 
       if (data.requestEvent?.params?.request?.method === "personal_sign") {

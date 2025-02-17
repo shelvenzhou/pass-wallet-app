@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useWalletStore } from '../store/walletStore';
-import { getWalletKit, setWalletKit } from '../utils/helper';
+import { getWalletKit, setWalletKit } from '../store/walletStore';
 import { IWalletKit, WalletKit } from '@reown/walletkit';
 import { Core } from '@walletconnect/core';
 
@@ -11,7 +11,28 @@ interface WalletConnectModalProps {
 }
 
 const WalletKitInitialize = () => {
-  const { setData } = useWalletStore();
+  const { setData, setActiveSessions } = useWalletStore();
+
+  // useEffect(() => {
+  //   setActiveSessions(walletkit.getActiveSessions());
+
+  //   if (walletkit) {
+  //     walletkit.on("session_proposal", onSessionProposal);
+  //     walletkit.on("session_request", onSessionRequest);
+  //     walletkit.on("session_delete", () => {
+  //       setActiveSessions(walletkit.getActiveSessions());
+  //     });
+
+  //     return () => {
+  //       walletkit.off("session_proposal", onSessionProposal);
+  //       walletkit.off("session_request", onSessionRequest);
+  //       walletkit.off("session_delete", () => {
+  //         setActiveSessions(walletkit.getActiveSessions());
+  //       });
+  //     };
+  //   }
+  // }, [onSessionProposal, onSessionRequest, walletkit]);
+
 
   useEffect(() => {
     const initialiseWalletKit = async () => {
@@ -34,7 +55,8 @@ const WalletKitInitialize = () => {
         // Set up event listeners
         walletKit.on('session_proposal', (proposal) => {
           console.log('Session proposal received:', proposal);
-          toast.success('Session proposal received');
+          toast.success('Session proposal received' + proposal.id);
+          
           setData({ proposal });
         });
 

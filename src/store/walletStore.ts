@@ -30,7 +30,6 @@ export interface WalletState {
   clearData: () => void;
   setWalletKit: (kit: IWalletKit | null) => void;
   setWalletAccount: (account: `0x${string}` | null) => void;
-  connectWallet: () => Promise<void>;
 }
 
 export const useWalletStore = create<WalletState>((set, get) => ({
@@ -61,26 +60,6 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   setWalletAccount: (account) => set({ 
     walletAccount: account 
   }),
-  
-  connectWallet: async () => {
-    // if (!window.ethereum) {
-    //   throw new Error('No Ethereum provider found');
-    // }
-    
-    // try {
-    //   await window.ethereum.request({ method: 'eth_requestAccounts' });
-    //   const client = createWalletClient({
-    //     chain: sepolia,
-    //     transport: custom(window.ethereum)
-    //   });
-      
-    //   set({ walletClient: client });
-    //   return client;
-    // } catch (error) {
-    //   console.error('User denied account access');
-    //   throw error;
-    // }
-  },
 }));
 
 // Helper functions that use the store
@@ -88,3 +67,4 @@ export const getWalletKit = () => useWalletStore.getState().walletKit;
 export const getWalletAccount = () => useWalletStore.getState().walletAccount;
 export const getAddress = () => useWalletStore.getState().walletAccount; 
 export const getWalletClient = () => useWalletStore.getState().walletClient;
+export const setWalletKit = (kit: IWalletKit | null) => useWalletStore.getState().setWalletKit(kit);
