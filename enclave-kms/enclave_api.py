@@ -42,8 +42,15 @@ def sign():
     if not private_key:
         return jsonify({"error": "Failed to decrypt key"}), 500
     
-    # Sign the message
-    signature = keymanager.sign_message(message, private_key)
+    # Sign the message - note the parameter order: message, address
+    signature = keymanager.sign_message(message, address)
+    if not signature:
+        return jsonify({"error": "Failed to sign message"}), 500
+    
+    # Ensure signature has 0x prefix
+    if not signature.startswith('0x'):
+        signature = '0x' + signature
+    
     return jsonify({"signature": signature})
 
 if __name__ == '__main__':

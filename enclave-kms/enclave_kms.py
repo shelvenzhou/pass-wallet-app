@@ -3,6 +3,7 @@ import secrets
 import json
 import os
 from dotenv import load_dotenv
+from eth_account.messages import encode_defunct
 
 # Load environment variables from .env file
 load_dotenv()
@@ -69,6 +70,54 @@ def list_addresses():
     
     return list(keystore.keys())
 
+def sign_message(message: str, address: str) -> str:
+    """Sign a message using the private key associated with the given address
+    
+    Args:
+        message: The message to sign
+        address: The Ethereum address whose private key will be used for signing
+        
+    Returns:
+        The signature as a hex string, or None if the key cannot be found/decrypted
+    """
+    # Get the encrypted key from keystore
+    encrypted_key = get_key(address)
+    if not encrypted_key:
+        return None
+    
+    # Decrypt the private key
+    private_key = decrypt_key(encrypted_key, SECRET)
+    if not private_key:
+        return None
+    
+    # Create account and sign message
+    account = Account.from_key(private_key)
+    # Create an EIP-191 encoded message
+    message_to_sign = encode_defunct(text=message)
+    signed_message = account.sign_message(message_to_sign)
+    
+    return signed_message.signature.hex()
+
+def verify_message(message: str, signature: str, address: str) -> bool:
+    """Verify a message signature
+    
+    Args:
+        message: The original message
+        signature: The signature to verify (hex string)
+        address: The Ethereum address that should have signed the message
+        
+    Returns:
+        True if the signature is valid, False otherwise
+    """
+    # Create an EIP-191 encoded message
+    message_to_verify = encode_defunct(text=message)
+    # Convert hex signature to bytes
+    signature_bytes = bytes.fromhex(signature.replace('0x', ''))
+    # Verify the signature
+    verified = Account.recover_message(message_to_verify, signature=signature_bytes)
+    return verified.lower() == address.lower()
+
+
 if __name__ == "__main__":
     account = generate_ethereum_account()
     encrypted_key = encrypt_key(account["private_key"], SECRET)
@@ -85,4 +134,12 @@ if __name__ == "__main__":
 
     assert decrypted_key == account["private_key"]
 
+    # Sign a message
+    message = "Hello, world!"
+    signature = sign_message(message, account["address"])
+    print(f"Signed message: {signature}")
+
+    # Verify the signature
+    verified = verify_message(message, signature, account["address"])
+    print(f"Verified: {verified}")
     

@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from "next";
-import { createWalletClient, http, parseEther } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { sepolia } from "viem/chains";
+import { prisma } from "../../lib/prisma";
+
+const ENCLAVE_URL = process.env.ENCLAVE_URL || 'http://127.0.0.1:5000';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -15,42 +15,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Message, address, and signer address are required' });
     }
 
-    console.log("Message: " + message);
-    console.log("Address: " + address);
-    console.log("Signer address: " + signerAddress);
+    // Verify ownership through database
+    const wallet = await prisma.passWallet.findUnique({
+      where: { address }
+    });
 
-    // Get private key from environment
-    const privateKey = process.env.NEXT_PUBLIC_PASS_WALLET_PRIVATE_KEY;
-    if (!privateKey) {
-      return res.status(500).json({ error: 'Private key not configured' });
+    if (!wallet) {
+      return res.status(404).json({ error: 'Wallet not found' });
     }
-  
-    // Create account from private key
-    const account = privateKeyToAccount(privateKey as `0x${string}`);
+    // TODO: More complex rule handling
+    if (wallet.owner !== signerAddress) {
+      return res.status(403).json({ error: 'Not authorized to sign for this wallet' });
+    }
 
-    // Create wallet client
-    const client = createWalletClient({
-      account,
-      chain: sepolia,
-      transport: http()
+    // Call the enclave API to sign the message
+    const enclaveResponse = await fetch(`${ENCLAVE_URL}/sign`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        address,
+        message,
+      }),
     });
 
-    console.log("Account address: " + account.address);
-    // Check if the address is whitelisted
-    // if (address !== account.address) {
-    //   return res.status(400).json({ error: 'Address does not match' });
-      
-    // }
-    // Whitelist logic
+    if (!enclaveResponse.ok) {
+      const error = await enclaveResponse.json();
+      throw new Error(error.error || 'Failed to sign message in enclave');
+    }
 
-    // Sign the message
-    const signature = await client.signMessage({
-      message,
-    });
+    const data = await enclaveResponse.json();
+    console.log('Enclave response:', data);
 
     return res.status(200).json({ 
-      signature,
-      address: account.address 
+      signature: data.signature,
+      address 
     });
 
   } catch (error) {
