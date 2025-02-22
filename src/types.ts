@@ -53,3 +53,11 @@ export interface WalletConnectResponse {
   success: boolean;
   error?: string;
 }
+
+export interface MessageRequest {
+  type: 'proposal' | 'request';
+  message: string;
+  dappUrl: string;
+  id: number;
+  topic?: string;
+}

@@ -35,11 +35,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       transport: http()
     });
 
+    console.log("Account address: " + account.address);
     // Check if the address is whitelisted
-    if (address !== account.address) {
-      return res.status(400).json({ error: 'Address does not match' });
+    // if (address !== account.address) {
+    //   return res.status(400).json({ error: 'Address does not match' });
       
-    }
+    // }
     // Whitelist logic
 
     // Sign the message

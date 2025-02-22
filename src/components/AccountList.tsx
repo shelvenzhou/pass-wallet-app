@@ -9,7 +9,7 @@ interface PassAccount {
 }
 
 // TODO: change this to the actual PASS Wallet address
-const PASS_WALLET_ADDRESS = "0x0307E085F04D8C8C8Bf9c78DE082a9C3f95DB270"
+const PASS_WALLET_ADDRESS = process.env.NEXT_PUBLIC_PASS_WALLET_ADDRESS || "";
 
 const AccountsList = () => {
   const router = useRouter();

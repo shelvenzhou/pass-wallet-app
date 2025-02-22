@@ -7,6 +7,7 @@ import { useAccount } from 'wagmi';
 import { useState, useEffect } from 'react';
 import TransferModal from '../../components/TransferModal';
 import MessageModal from '../../components/MessageModal';
+import { MessageRequest } from '../../types';
 
 import { toast } from 'react-hot-toast';
 import { Core } from '@walletconnect/core';
@@ -30,14 +31,6 @@ interface Asset {
   balance: string;
   value: string;
   icon?: string;
-}
-
-interface MessageRequest {
-  type: 'proposal' | 'request';
-  message: string;
-  dappUrl: string;
-  id: number;
-  topic?: string;
 }
 
 const AccountDetailsPage: NextPage = () => {
@@ -75,7 +68,7 @@ const AccountDetailsPage: NextPage = () => {
           chains: SUPPORTED_CHAINS,
           methods: SUPPORTED_METHODS,
           events: SUPPORTED_EVENTS,
-          accounts: [`eip155:11155111:${accountAddress}`],
+          accounts: [`eip155:11155111:${accountAddress}`, `eip155:1:${accountAddress}`],
         },
       },
     });
@@ -84,7 +77,9 @@ const AccountDetailsPage: NextPage = () => {
       id: parseInt(proposalParams!.id.toString()),
       namespaces: approvedNamespaces,
     });
-    console.log(walletKit.getActiveSessions());
+    
+    // Update the active sessions list
+    updateActiveSessions(walletKit);
     toast.success("Session approved");
     setIsProposalModalOpen(false);
   }
@@ -96,6 +91,7 @@ const AccountDetailsPage: NextPage = () => {
       reason: getSdkError("USER_REJECTED")
     });
     toast.success("Reject proposal successful");
+    setIsProposalModalOpen(false);
   }
 
   const handleApproveSignRequest = async () => {
@@ -105,9 +101,11 @@ const AccountDetailsPage: NextPage = () => {
     console.log(walletKit);
     if (!messageRequest?.message || !accountAddress || !walletKit) {
       toast.error("Invalid message or account address");
+      setIsMessageModalOpen(false);
+      updateActiveSessions(walletKit);
       return;
     }
-  
+    // Call backend Sign API
     try {
       const response = await fetch('/api/sign', {
         method: 'POST',
@@ -142,14 +140,12 @@ const AccountDetailsPage: NextPage = () => {
         },
       });
       
-      // Close the message modal after successful signing
-      setIsMessageModalOpen(false);
-      // toast.success("Message signed successfully");
-      
     } catch (error) {
       console.error('Error signing message:', error);
       toast.error("Failed to sign message");
     }
+    setIsMessageModalOpen(false);
+    updateActiveSessions(walletKit);
   }
 
   const handleRejectRequest = async () => {
@@ -170,6 +166,8 @@ const AccountDetailsPage: NextPage = () => {
       },
     });
     toast.success("Reject request successful");
+    setIsProposalModalOpen(false);
+    updateActiveSessions(walletKit);
   }
 
   useEffect(() => {
@@ -233,7 +231,7 @@ const AccountDetailsPage: NextPage = () => {
 
           setMessageRequest({
             type: 'proposal',
-            message: "A DApp wants to connect to your wallet. Do you want to approve this connection?",
+            message: "",
             dappUrl: proposal.params.proposer.metadata.url,
             id: proposal.id
           });
@@ -276,8 +274,8 @@ const AccountDetailsPage: NextPage = () => {
     };
 
     initializeWalletKit();
-    console.log('WalletKit initialized');
-    console.log(walletKit?.getActiveSessions());
+    // console.log('WalletKit initialized');
+    // console.log(walletKit?.getActiveSessions());
   }, []);
 
   const cardStyle = {
@@ -325,6 +323,8 @@ const AccountDetailsPage: NextPage = () => {
 
   // Convert object to array when setting sessions
   const updateActiveSessions = (walletKit: IWalletKit | null) => {
+    // clear input field
+    (document.getElementById('walletconnect-uri') as HTMLInputElement).value = '';
     const sessions = walletKit?.getActiveSessions() || {};
     setActiveSessions(Object.values(sessions));
   };
@@ -479,16 +479,14 @@ const AccountDetailsPage: NextPage = () => {
               onClose={() => setIsMessageModalOpen(false)}
               onSign={handleApproveSignRequest}
               onReject={handleRejectRequest}
-              message={messageRequest?.message}
-              dappUrl={messageRequest?.dappUrl}
+              messageRequest={messageRequest}
             />
             <MessageModal
               isOpen={isProposalModalOpen}
               onClose={() => setIsProposalModalOpen(false)}
               onSign={handleApproveProposal}
               onReject={handleRejectProposal}
-              message={messageRequest?.message}
-              dappUrl={messageRequest?.dappUrl}
+              messageRequest={messageRequest}
             />
           </>
         ) : (
