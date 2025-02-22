@@ -15,6 +15,7 @@ import { IWalletKit, WalletKit } from '@reown/walletkit';
 import { buildApprovedNamespaces, getSdkError } from '@walletconnect/utils';
 import { ProposalTypes } from '@walletconnect/types';
 import { SUPPORTED_CHAINS, SUPPORTED_METHODS, SUPPORTED_EVENTS } from '../../constants';
+import { hexToString } from 'viem';
 
 interface Transaction {
   hash: string;
@@ -42,7 +43,7 @@ interface MessageRequest {
 const AccountDetailsPage: NextPage = () => {
   const router = useRouter();
   const { address: accountAddress } = router.query;
-  const { isConnected } = useAccount();
+  const { isConnected, address: connectedAddress } = useAccount();
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
@@ -58,6 +59,7 @@ const AccountDetailsPage: NextPage = () => {
 
   const [walletKit, setWalletKit] = useState<IWalletKit | null>(null);
   const [messageRequest, setMessageRequest] = useState<MessageRequest | null>(null);
+  const [activeSessions, setActiveSessions] = useState<any[]>([]);
 
   const handleApproveProposal = async () => {
     console.log("Approve proposal");
@@ -77,7 +79,6 @@ const AccountDetailsPage: NextPage = () => {
         },
       },
     });
-    console.log(approvedNamespaces);
 
     await walletKit.approveSession({
       id: parseInt(proposalParams!.id.toString()),
@@ -116,6 +117,7 @@ const AccountDetailsPage: NextPage = () => {
         body: JSON.stringify({
           message: messageRequest.message,
           address: accountAddress,
+          signerAddress: connectedAddress,
         }),
       });
   
@@ -142,7 +144,7 @@ const AccountDetailsPage: NextPage = () => {
       
       // Close the message modal after successful signing
       setIsMessageModalOpen(false);
-      toast.success("Message signed successfully");
+      // toast.success("Message signed successfully");
       
     } catch (error) {
       console.error('Error signing message:', error);
@@ -168,13 +170,6 @@ const AccountDetailsPage: NextPage = () => {
       },
     });
     toast.success("Reject request successful");
-  }
-
-  const getMessage = () => {
-    return {
-      message: "Hello, world!",
-      dappUrl: "https://example.com"
-    }
   }
 
   useEffect(() => {
@@ -226,6 +221,7 @@ const AccountDetailsPage: NextPage = () => {
         });
 
         setWalletKit(walletKit);
+        updateActiveSessions(walletKit);
 
         // Set up event listeners
         walletKit.on('session_proposal', (proposal) => {
@@ -241,20 +237,27 @@ const AccountDetailsPage: NextPage = () => {
             dappUrl: proposal.params.proposer.metadata.url,
             id: proposal.id
           });
+          updateActiveSessions(walletKit);
         });
 
         walletKit.on('session_request', (requestEvent) => {
           console.log('Session request received:', requestEvent);
           toast.success('Session request received');
-          console.log(requestEvent.params);
+          console.log("Request event params: " + JSON.stringify(requestEvent.params));
 
-          const message = requestEvent.params.request.params[1];
+          const message = requestEvent.params.request.params[0];
+          const messageString = hexToString(message);
+          console.log("Message string: " + messageString);
+
+          // Get URL
+          const url = requestEvent.verifyContext?.verified?.origin;
+          console.log("URL: " + url);
           
           // TODO: Pass the URL correctly.
           setMessageRequest({
             type: 'request',
-            message: message,
-            dappUrl: "https://example.com",
+            message: messageString,
+            dappUrl: url,
             id: requestEvent.id,
             topic: requestEvent.topic
           });
@@ -264,6 +267,7 @@ const AccountDetailsPage: NextPage = () => {
         walletKit.on('session_delete', (session) => {
           console.log('Session deleted:', session);
           toast.success('Session deleted');
+          updateActiveSessions(walletKit);
         });
       } catch (error) {
         console.error('Failed to initialize WalletKit:', error);
@@ -319,6 +323,12 @@ const AccountDetailsPage: NextPage = () => {
     console.log(walletKit.getActiveSessions());      
   };
 
+  // Convert object to array when setting sessions
+  const updateActiveSessions = (walletKit: IWalletKit | null) => {
+    const sessions = walletKit?.getActiveSessions() || {};
+    setActiveSessions(Object.values(sessions));
+  };
+
   return (
     <div className={styles.container}>
       <Head>
@@ -362,6 +372,49 @@ const AccountDetailsPage: NextPage = () => {
               <div style={cardStyle}>
                 <input style={inputStyle} type="text" id="walletconnect-uri" placeholder="Enter Walletconnect URI" />
                 <button style={buttonStyle} onClick={handleConnect}>Walletconnect Login</button>
+              </div>
+              <div style={cardStyle}>
+                <h2>Active Sessions</h2>
+                {activeSessions.length === 0 ? (
+                  <p style={{ color: '#666' }}>No active sessions</p>
+                ) : (
+                  activeSessions.map((session, index) => (
+                    <div
+                      key={session.topic}
+                      style={{
+                        padding: '16px',
+                        borderBottom: index < activeSessions.length - 1 ? '1px solid #eaeaea' : 'none',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: '500' }}>{session.peer.metadata.name}</div>
+                        <div style={{ color: '#666', fontSize: '0.9rem' }}>
+                          {session.peer.metadata.url}
+                        </div>
+                      </div>
+                      <button
+                        style={{
+                          ...buttonStyle,
+                          backgroundColor: '#dc3545',
+                          padding: '8px 16px'
+                        }}
+                        onClick={async () => {
+                          await walletKit?.disconnectSession({
+                            topic: session.topic,
+                            reason: getSdkError("USER_DISCONNECTED")
+                          });
+                          updateActiveSessions(walletKit);
+                          toast.success('Session disconnected');
+                        }}
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
               <div style={cardStyle}>
                 <h2>Assets</h2>

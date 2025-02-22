@@ -6,8 +6,6 @@ import {
   sepolia,
 } from 'wagmi/chains';
 
-console.log(process.env.NEXT_PUBLIC_PROJECT_ID);
-
 export const config = getDefaultConfig({
   appName: 'PassWallet',
   projectId: process.env.NEXT_PUBLIC_PROJECT_ID || 'none',

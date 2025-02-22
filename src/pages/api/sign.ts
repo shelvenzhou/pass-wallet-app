@@ -9,18 +9,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { message } = req.body;
+    const { message, address, signerAddress } = req.body;
 
-    if (!message) {
-      return res.status(400).json({ error: 'Message is required' });
+    if (!message || !address || !signerAddress) {
+      return res.status(400).json({ error: 'Message, address, and signer address are required' });
     }
+
+    console.log("Message: " + message);
+    console.log("Address: " + address);
+    console.log("Signer address: " + signerAddress);
 
     // Get private key from environment
     const privateKey = process.env.NEXT_PUBLIC_PASS_WALLET_PRIVATE_KEY;
     if (!privateKey) {
       return res.status(500).json({ error: 'Private key not configured' });
     }
-
+  
     // Create account from private key
     const account = privateKeyToAccount(privateKey as `0x${string}`);
 
@@ -30,6 +34,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       chain: sepolia,
       transport: http()
     });
+
+    // Check if the address is whitelisted
+    if (address !== account.address) {
+      return res.status(400).json({ error: 'Address does not match' });
+      
+    }
+    // Whitelist logic
 
     // Sign the message
     const signature = await client.signMessage({

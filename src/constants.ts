@@ -5,6 +5,7 @@ export const SUPPORTED_CHAINS = [
   
 export const SUPPORTED_METHODS = [
     "personal_sign",
+    "eth_sendTransaction"
   ];
   
 export const SUPPORTED_EVENTS = [
