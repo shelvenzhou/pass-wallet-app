@@ -5,7 +5,7 @@ interface MessageModalProps {
   onClose: () => void;
   onSign: () => Promise<void>;
   onReject: () => Promise<void>;
-  messageRequest: MessageRequest;
+  messageRequest?: MessageRequest;
 }
 
 const MessageModal = ({ 

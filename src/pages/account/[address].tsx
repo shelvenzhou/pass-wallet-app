@@ -124,8 +124,8 @@ const AccountDetailsPage: NextPage = () => {
       }
   
       const { signature } = await response.json();
-      console.log(signature);
-      toast.success("Message signed successfully "+signature);
+      // console.log(signature);
+      // toast.success("Message signed successfully "+signature);
       if (!messageRequest.topic) {
         toast.error("Error: No topic found");
         return;
@@ -225,7 +225,7 @@ const AccountDetailsPage: NextPage = () => {
         walletKit.on('session_proposal', (proposal) => {
           console.log('Session proposal received:', proposal);
           console.log(proposal.params);
-          toast.success('Session proposal received' + proposal.id);
+          // toast.success('Session proposal received' + proposal.id);
           setProposalParams(proposal.params);
           setIsProposalModalOpen(true);
 
@@ -240,7 +240,7 @@ const AccountDetailsPage: NextPage = () => {
 
         walletKit.on('session_request', (requestEvent) => {
           console.log('Session request received:', requestEvent);
-          toast.success('Session request received');
+          // toast.success('Session request received');
           console.log("Request event params: " + JSON.stringify(requestEvent.params));
 
           const message = requestEvent.params.request.params[0];
@@ -263,7 +263,7 @@ const AccountDetailsPage: NextPage = () => {
         });
 
         walletKit.on('session_delete', (session) => {
-          console.log('Session deleted:', session);
+          // console.log('Session deleted:', session);
           toast.success('Session deleted');
           updateActiveSessions(walletKit);
         });
@@ -316,9 +316,8 @@ const AccountDetailsPage: NextPage = () => {
       return;
     }
     await walletKit.pair({ uri });
-    toast.success('WalletConnect session established');
+    // toast.success('WalletConnect session established');
     // Log the active sessions
-    console.log(walletKit.getActiveSessions());      
   };
 
   // Convert object to array when setting sessions
@@ -416,7 +415,7 @@ const AccountDetailsPage: NextPage = () => {
                   ))
                 )}
               </div>
-              <div style={cardStyle}>
+              {/* <div style={cardStyle}>
                 <h2>Assets</h2>
                 {accountDetails.assets.map((asset, index) => (
                   <div key={index} style={{ 
@@ -467,7 +466,7 @@ const AccountDetailsPage: NextPage = () => {
                     </div>
                   </div>
                 ))}
-              </div>
+              </div> */}
             </div>
             <TransferModal
               isOpen={isTransferModalOpen}
@@ -479,14 +478,14 @@ const AccountDetailsPage: NextPage = () => {
               onClose={() => setIsMessageModalOpen(false)}
               onSign={handleApproveSignRequest}
               onReject={handleRejectRequest}
-              messageRequest={messageRequest}
+              messageRequest={messageRequest || undefined}
             />
             <MessageModal
               isOpen={isProposalModalOpen}
               onClose={() => setIsProposalModalOpen(false)}
               onSign={handleApproveProposal}
               onReject={handleRejectProposal}
-              messageRequest={messageRequest}
+              messageRequest={messageRequest || undefined}
             />
           </>
         ) : (
