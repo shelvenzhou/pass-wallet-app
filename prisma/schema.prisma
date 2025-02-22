@@ -14,6 +14,6 @@ model PassWallet {
   id        Int      @id @default(autoincrement())
   address   String   @unique
   name      String
-  owners    String   // Stored as JSON string
+  owner    String   // General Signable Message Admin
   createdAt DateTime @default(now())
 }

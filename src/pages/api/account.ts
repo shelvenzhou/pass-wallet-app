@@ -1,6 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '../../lib/prisma';
 
+const ENCLAVE_URL = process.env.ENCLAVE_URL || 'http://127.0.0.1:5000';
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -17,17 +19,32 @@ export default async function handler(
 
     case 'POST':
       try {
-        const { address, name, owners } = req.body;
+        const { name, owner } = req.body;
         
-        if (!address || !name || !owners) {
+        if (!name || !owner) {
           return res.status(400).json({ error: 'Missing required fields' });
         }
 
+        // Call the enclave API to generate a new account
+        const enclaveResponse = await fetch(`${ENCLAVE_URL}/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (!enclaveResponse.ok) {
+          throw new Error('Failed to generate account in enclave');
+        }
+
+        const { address } = await enclaveResponse.json();
+
+        // Create wallet record in database
         const newWallet = await prisma.passWallet.create({
           data: {
             address,
             name,
-            owners: JSON.stringify(owners),
+            owner: owner,
           },
         });
 

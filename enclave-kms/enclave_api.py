@@ -1,15 +1,17 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import enclave_kms as keymanager
-
+import os
 app = Flask(__name__)
 CORS(app)
+
+ENCLAVE_SECRET = os.getenv("ENCLAVE_SECRET")
 
 @app.route('/generate', methods=['POST'])
 def generate():
     """Generate a new Ethereum account and store it encrypted in the enclave"""
     account = keymanager.generate_ethereum_account()
-    encrypted = keymanager.encrypt_key(account['private_key'])
+    encrypted = keymanager.encrypt_key(account['private_key'], ENCLAVE_SECRET)
     keymanager.store_key(account['address'], encrypted)
     
     return jsonify({
@@ -36,7 +38,7 @@ def sign():
         return jsonify({"error": "Address not found"}), 404
     
     # Decrypt using enclave secret
-    private_key = keymanager.decrypt_key(encrypted)
+    private_key = keymanager.decrypt_key(encrypted, ENCLAVE_SECRET)
     if not private_key:
         return jsonify({"error": "Failed to decrypt key"}), 500
     

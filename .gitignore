@@ -51,6 +51,9 @@ local
 # typescript
 *.tsbuildinfo
 
-# enclave-kms
+# python enclave-kms
 enclave-kms/keystore.json
 enclave-kms/venv/
+enclave-kms/__pycache__
+
+

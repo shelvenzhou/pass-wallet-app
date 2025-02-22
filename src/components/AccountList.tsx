@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useAccount } from 'wagmi';
 interface PassAccount {
   address: string;
   name: string;
-  owners: string[];
+  owner: string;
   createdAt: string;
 }
 
@@ -14,11 +14,13 @@ const PASS_WALLET_ADDRESS = process.env.NEXT_PUBLIC_PASS_WALLET_ADDRESS || "";
 const AccountsList = () => {
   const router = useRouter();
   const { address } = useAccount();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newWalletName, setNewWalletName] = useState('');
   const [accounts, setAccounts] = useState<PassAccount[]>([
     {
       address: PASS_WALLET_ADDRESS,
       name: 'Main Account',
-      owners: ['0xabcd...efgh'],
+      owner: '0xabcd...efgh',
       createdAt: '2024-02-17',
     },
   ]);
@@ -51,17 +53,31 @@ const AccountsList = () => {
     marginTop: '20px',
   };
 
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      const response = await fetch('/api/account/');
+      const data = await response.json();
+      setAccounts(data);
+    };
+    fetchAccounts();
+  }, []);
+
   const handleCreateNewAccount = async () => {
+    const defaultName = `Wallet ${accounts.length + 1}`;
+    setNewWalletName(defaultName);
+    setIsModalOpen(true);
+  };
+
+  const handleSubmitNewAccount = async () => {
     try {
-      const response = await fetch('/api/passwallets', {
+      const response = await fetch('/api/account/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          address: PASS_WALLET_ADDRESS,
-          name: 'New Wallet',
-          owners: [address], // Using connected wallet address
+          name: newWalletName,
+          owner: address,
         }),
       });
 
@@ -71,6 +87,8 @@ const AccountsList = () => {
 
       const newWallet = await response.json();
       setAccounts([...accounts, newWallet]);
+      setIsModalOpen(false);
+      setNewWalletName('');
     } catch (error) {
       console.error('Error creating wallet:', error);
     }
@@ -104,7 +122,7 @@ const AccountsList = () => {
           
           <div style={{ marginTop: '12px', color: '#666' }}>
             <p style={{ margin: '4px 0' }}>Address: {account.address}</p>
-            <p style={{ margin: '4px 0' }}>Owners: {account.owners.length}</p>
+            <p style={{ margin: '4px 0' }}>Owner: {account.owner}</p>
           </div>
         </div>
       ))}
@@ -113,6 +131,64 @@ const AccountsList = () => {
         <div style={{ textAlign: 'center', color: '#666', marginTop: '2rem' }}>
           <p>You don't have any PASS accounts yet.</p>
           <p>Create your first account to get started!</p>
+        </div>
+      )}
+
+      {isModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '24px',
+            borderRadius: '12px',
+            width: '90%',
+            maxWidth: '400px',
+          }}>
+            <h3>Create New Account</h3>
+            <input
+              type="text"
+              value={newWalletName}
+              onChange={(e) => setNewWalletName(e.target.value)}
+              placeholder="Enter wallet name"
+              style={{
+                width: '100%',
+                padding: '8px',
+                marginBottom: '16px',
+                borderRadius: '4px',
+                border: '1px solid #eaeaea',
+              }}
+            />
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setNewWalletName('');
+                }}
+                style={{
+                  ...buttonStyle,
+                  backgroundColor: '#dc3545',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitNewAccount}
+                style={buttonStyle}
+              >
+                Create
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
