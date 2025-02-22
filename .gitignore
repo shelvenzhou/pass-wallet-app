@@ -50,3 +50,7 @@ local
 
 # typescript
 *.tsbuildinfo
+
+# enclave-kms
+enclave-kms/keystore.json
+enclave-kms/venv/
