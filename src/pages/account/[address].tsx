@@ -96,9 +96,6 @@ const AccountDetailsPage: NextPage = () => {
 
   const handleApproveSignRequest = async () => {
     console.log("Approve sign request");
-    console.log(messageRequest?.message);
-    console.log(accountAddress);
-    console.log(walletKit);
     if (!messageRequest?.message || !accountAddress || !walletKit) {
       toast.error("Invalid message or account address");
       setIsMessageModalOpen(false);
@@ -116,6 +113,8 @@ const AccountDetailsPage: NextPage = () => {
           message: messageRequest.message,
           address: accountAddress,
           signerAddress: connectedAddress,
+          domainUrl: messageRequest.dappUrl || 'unknown',
+          sessionId: messageRequest.topic || null
         }),
       });
   
@@ -124,12 +123,12 @@ const AccountDetailsPage: NextPage = () => {
       }
   
       const { signature } = await response.json();
-      // console.log(signature);
-      // toast.success("Message signed successfully "+signature);
+  
       if (!messageRequest.topic) {
         toast.error("Error: No topic found");
         return;
       }
+      
       // Send signature back to DApp
       await walletKit.respondSessionRequest({
         topic: messageRequest.topic,

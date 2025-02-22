@@ -9,7 +9,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { message, address, signerAddress } = req.body;
+    const { message, address, signerAddress, domainUrl, sessionId } = req.body;
 
     if (!message || !address || !signerAddress) {
       return res.status(400).json({ error: 'Message, address, and signer address are required' });
@@ -47,6 +47,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const data = await enclaveResponse.json();
     console.log('Enclave response:', data);
+
+    // Record the sign transaction with sessionId
+    await prisma.signTransaction.create({
+      data: {
+        passAccount: {
+          connect: { id: wallet.id }
+        },
+        signer: signerAddress,
+        domainUrl: domainUrl || 'unknown',
+        message: message,
+        signature: data.signature,
+        sessionId: sessionId || null
+      }
+    });
 
     return res.status(200).json({ 
       signature: data.signature,

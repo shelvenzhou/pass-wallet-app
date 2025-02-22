@@ -10,10 +10,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model SignMessageHistory {
+  id          Int      @id @default(autoincrement())
+  passAccount PassWallet @relation(fields: [passAccountId], references: [id])
+  passAccountId Int
+  signer      String   // Address of the signer
+  domainUrl   String   // URL of the dapp requesting signature
+  message     String   // Message being signed
+  signature   String   // The resulting signature
+  sessionId   String?  // WalletConnect session ID
+  createdAt   DateTime @default(now())
+}
+
 model PassWallet {
   id        Int      @id @default(autoincrement())
   address   String   @unique
   name      String
-  owner    String   // General Signable Message Admin
+  owner     String   // General Signable Message Admin
   createdAt DateTime @default(now())
+  signTransactions SignTransaction[] // Add this relation
 }
