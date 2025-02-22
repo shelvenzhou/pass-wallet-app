@@ -5,6 +5,18 @@
 /.pnp
 .pnp.js
 
+# Database
+*.db
+*.db-journal
+
+# Prisma
+/prisma/migrations/
+/prisma/*.db
+/prisma/*.db-journal
+.env
+node_modules/.prisma
+
+
 # testing
 /coverage
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
-
+import { useAccount } from 'wagmi';
 interface PassAccount {
   address: string;
   name: string;
@@ -13,6 +13,7 @@ const PASS_WALLET_ADDRESS = process.env.NEXT_PUBLIC_PASS_WALLET_ADDRESS || "";
 
 const AccountsList = () => {
   const router = useRouter();
+  const { address } = useAccount();
   const [accounts, setAccounts] = useState<PassAccount[]>([
     {
       address: PASS_WALLET_ADDRESS,
@@ -50,9 +51,29 @@ const AccountsList = () => {
     marginTop: '20px',
   };
 
-  const handleCreateNewAccount = () => {
-    // Implement account creation logic here
-    console.log('Creating new account...');
+  const handleCreateNewAccount = async () => {
+    try {
+      const response = await fetch('/api/passwallets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          address: PASS_WALLET_ADDRESS,
+          name: 'New Wallet',
+          owners: [address], // Using connected wallet address
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create wallet');
+      }
+
+      const newWallet = await response.json();
+      setAccounts([...accounts, newWallet]);
+    } catch (error) {
+      console.error('Error creating wallet:', error);
+    }
   };
 
   const handleAccountClick = (address: string) => {
