@@ -18,6 +18,14 @@ type AccountData = {
     amount: string;
     timestamp: string;
   }>;
+  signedMessages: Array<{
+    message: string;
+    signer: string;
+    domainUrl: string;
+    signature: string;
+    sessionId: string | null;
+    createdAt: string;
+  }>;
 };
 
 export default async function handler(
@@ -32,6 +40,9 @@ export default async function handler(
       where: {
         address: address as string,
       },
+      include: {
+        signedMessages: true, // Include the signing history
+      },
     });
 
     if (!wallet) {
@@ -41,6 +52,7 @@ export default async function handler(
         owner: address as string,
         assets: [],
         transactions: [],
+        signedMessages: [],
       });
     }
 
@@ -82,6 +94,14 @@ export default async function handler(
           timestamp: '2024-02-17 12:15',
         },
       ],
+      signedMessages: wallet?.signedMessages.map((msg: any) => ({
+        message: msg.message,
+        signer: msg.signer,
+        domainUrl: msg.domainUrl,
+        signature: msg.signature,
+        sessionId: msg.sessionId,
+        createdAt: msg.createdAt.toISOString(),
+      })) || [],
     };
 
     res.status(200).json(accountData);
@@ -93,6 +113,7 @@ export default async function handler(
       owner: address as string,
       assets: [],
       transactions: [],
+      signedMessages: [],
     });
   }
 }

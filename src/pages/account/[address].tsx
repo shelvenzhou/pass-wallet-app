@@ -15,7 +15,7 @@ import { IWalletKit, WalletKit } from '@reown/walletkit';
 
 import { buildApprovedNamespaces, getSdkError } from '@walletconnect/utils';
 import { ProposalTypes } from '@walletconnect/types';
-import { SUPPORTED_CHAINS, SUPPORTED_METHODS, SUPPORTED_EVENTS } from '../../constants';
+import { SUPPORTED_CHAINS, SUPPORTED_METHODS, SUPPORTED_EVENTS, CHAIN_NAME_MAP } from '../../constants';
 import { hexToString } from 'viem';
 
 interface Transaction {
@@ -33,6 +33,15 @@ interface Asset {
   icon?: string;
 }
 
+interface SignedMessage {
+  message: string;
+  signer: string;
+  domainUrl: string;
+  signature: string;
+  sessionId: string | null;
+  createdAt: string;
+}
+
 const AccountDetailsPage: NextPage = () => {
   const router = useRouter();
   const { address: accountAddress } = router.query;
@@ -46,6 +55,7 @@ const AccountDetailsPage: NextPage = () => {
     owner: string;
     assets: Asset[];
     transactions: Transaction[];
+    signedMessages: SignedMessage[];
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [proposalParams, setProposalParams] = useState<ProposalTypes.Struct | null>(null);
@@ -325,6 +335,8 @@ const AccountDetailsPage: NextPage = () => {
     (document.getElementById('walletconnect-uri') as HTMLInputElement).value = '';
     const sessions = walletKit?.getActiveSessions() || {};
     setActiveSessions(Object.values(sessions));
+    // Update signed messages history
+
   };
 
   return (
@@ -392,6 +404,14 @@ const AccountDetailsPage: NextPage = () => {
                         <div style={{ color: '#666', fontSize: '0.9rem' }}>
                           {session.peer.metadata.url}
                         </div>
+                        <div style={{ color: '#666', fontSize: '0.9rem' }}>
+                          Chains: {Object.keys(session.namespaces).map(namespace => 
+                            session.namespaces[namespace].chains?.map((chain: string) => {
+                              const chainId = chain.split(':')[1];
+                              return CHAIN_NAME_MAP[chainId] || chainId;
+                            }).join(', ')
+                          ).join(', ')}
+                        </div>
                       </div>
                       <button
                         style={{
@@ -414,58 +434,47 @@ const AccountDetailsPage: NextPage = () => {
                   ))
                 )}
               </div>
-              {/* <div style={cardStyle}>
-                <h2>Assets</h2>
-                {accountDetails.assets.map((asset, index) => (
-                  <div key={index} style={{ 
-                    padding: '16px 0',
-                    borderBottom: index < accountDetails.assets.length - 1 ? '1px solid #eaeaea' : 'none',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      {asset.icon && (
-                        <img 
-                          src={asset.icon} 
-                          alt={asset.symbol} 
-                          style={{ width: '32px', height: '32px' }}
-                        />
-                      )}
-                      <div>
-                        <div style={{ fontWeight: '500' }}>{asset.name}</div>
-                        <div style={{ color: '#666', fontSize: '0.9rem' }}>{asset.balance} {asset.symbol}</div>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div>{asset.value}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              
               <div style={cardStyle}>
-                <h2>Recent Transactions</h2>
-                {accountDetails.transactions.map((tx, index) => (
-                  <div key={index} style={{ 
-                    padding: '12px 0',
-                    borderBottom: index < accountDetails.transactions.length - 1 ? '1px solid #eaeaea' : 'none',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <div>
-                      <div style={{ color: tx.type === 'send' ? '#dc3545' : '#28a745' }}>
-                        {tx.type === 'send' ? '↑' : '↓'} {tx.amount}
+                <h2>Message Signing History</h2>
+                {accountDetails.signedMessages.length === 0 ? (
+                  <p style={{ color: '#666' }}>No signed messages yet</p>
+                ) : (
+                  accountDetails.signedMessages.map((msg, index) => (
+                    <div
+                      key={index}
+                      style={{
+                        padding: '16px',
+                        borderBottom: index < accountDetails.signedMessages.length - 1 ? '1px solid #eaeaea' : 'none',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <div style={{ fontWeight: '500' }}>{msg.domainUrl}</div>
+                        <div style={{ color: '#666', fontSize: '0.9rem' }}>
+                          {new Date(msg.createdAt).toLocaleString()}
+                        </div>
                       </div>
-                      <div style={{ color: '#666', fontSize: '0.9rem' }}>{tx.timestamp}</div>
+                      <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '8px' }}>
+                        Signer: {msg.signer}
+                      </div>
+                      <div style={{ 
+                        background: '#f5f5f5', 
+                        padding: '12px', 
+                        borderRadius: '6px',
+                        fontSize: '0.9rem',
+                        wordBreak: 'break-all'
+                      }}>
+                        <div style={{ marginBottom: '8px' }}>Message: {msg.message}</div>
+                        <div>Signature: {msg.signature.substring(0, 32)}...</div>
+                      </div>
+                      {msg.sessionId && (
+                        <div style={{ color: '#666', fontSize: '0.9rem', marginTop: '8px' }}>
+                          Session ID: {msg.sessionId}
+                        </div>
+                      )}
                     </div>
-                    <div style={{ color: '#666', fontSize: '0.9rem' }}>
-                      {tx.hash}
-                    </div>
-                  </div>
-                ))}
-              </div> */}
+                  ))
+                )}
+              </div>
             </div>
             <TransferModal
               isOpen={isTransferModalOpen}

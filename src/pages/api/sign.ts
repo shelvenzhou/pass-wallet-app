@@ -49,7 +49,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('Enclave response:', data);
 
     // Record the sign transaction with sessionId
-    await prisma.signTransaction.create({
+    await prisma.signMessageHistory.create({
       data: {
         passAccount: {
           connect: { id: wallet.id }

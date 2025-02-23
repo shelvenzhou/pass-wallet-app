@@ -28,5 +28,5 @@ model PassWallet {
   name      String
   owner     String   // General Signable Message Admin
   createdAt DateTime @default(now())
-  signTransactions SignTransaction[] // Add this relation
+  signedMessages SignMessageHistory[]
 }
