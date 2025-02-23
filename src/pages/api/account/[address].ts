@@ -94,14 +94,16 @@ export default async function handler(
           timestamp: '2024-02-17 12:15',
         },
       ],
-      signedMessages: wallet?.signedMessages.map((msg: any) => ({
-        message: msg.message,
-        signer: msg.signer,
-        domainUrl: msg.domainUrl,
-        signature: msg.signature,
-        sessionId: msg.sessionId,
-        createdAt: msg.createdAt.toISOString(),
-      })) || [],
+      signedMessages: (wallet?.signedMessages || [])
+        .sort((a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime())
+        .map((msg: any) => ({
+          message: msg.message,
+          signer: msg.signer,
+          domainUrl: msg.domainUrl,
+          signature: msg.signature,
+          sessionId: msg.sessionId,
+          createdAt: msg.createdAt.toISOString(),
+        })),
     };
 
     res.status(200).json(accountData);

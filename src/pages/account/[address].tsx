@@ -102,6 +102,7 @@ const AccountDetailsPage: NextPage = () => {
     });
     toast.success("Reject proposal successful");
     setIsProposalModalOpen(false);
+    updateActiveSessions(walletKit);
   }
 
   const handleApproveSignRequest = async () => {
