@@ -108,7 +108,7 @@ This project is licensed under the MIT License.
 
 ## Acknowledgments
 
-This project is inspired by the[Liquefaction](https://github.com/key-encumbrance/liquefaction) paper by IC3 researchers James Austgen, Andrés Fábrega, Mahimna Kelkar, Dani Vilardell, Sarah Allen, Kushal Babel, Jay Yu, and Ari Juels.
+This project is inspired by the [Liquefaction](https://github.com/key-encumbrance/liquefaction) paper by IC3 researchers James Austgen, Andrés Fábrega, Mahimna Kelkar, Dani Vilardell, Sarah Allen, Kushal Babel, Jay Yu, and Ari Juels.
 
 Built with:
 - [RainbowKit](https://rainbowkit.com) - Wallet connection UI
