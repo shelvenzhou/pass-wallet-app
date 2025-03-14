@@ -40,13 +40,6 @@ const Home: NextPage = () => {
       </main>
 
       <footer className={styles.footer}>
-        <a
-          href="https://blockchain.stanford.edu"
-          rel="noopener noreferrer"
-          target="_blank"
-        >
-          Made with ❤️ by your frens at Stanford Blockchain Club
-        </a>
       </footer>
     </div>
   );

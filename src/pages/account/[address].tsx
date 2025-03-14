@@ -223,7 +223,7 @@ const AccountDetailsPage: NextPage = () => {
           metadata: {
             name: 'PassWallet',
             description: 'PassWallet',
-            url: 'blockchain.stanford.edu',
+            url: 'www.example.com',
             icons: []
           }
         });
