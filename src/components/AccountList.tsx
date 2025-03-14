@@ -63,7 +63,7 @@ const AccountsList = () => {
   }, []);
 
   const handleCreateNewAccount = async () => {
-    const defaultName = `Wallet ${accounts.length + 1}`;
+    const defaultName = `PassWallet ${accounts.length + 1}`;
     setNewWalletName(defaultName);
     setIsModalOpen(true);
   };
