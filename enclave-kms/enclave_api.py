@@ -29,6 +29,7 @@ def sign():
     """Sign a message using a private key stored in the enclave"""
     address = request.json.get('address')
     message = request.json.get('message')
+    print(f"Signing message: {message} for address: {address}")
     
     if not address or not message:
         return jsonify({"error": "Address and message required"}), 400

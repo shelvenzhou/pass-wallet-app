@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "enclave": "cd enclave-kms && source venv/bin/activate && python3 enclave_api.py"
   },
   "dependencies": {
     "@prisma/client": "^6.4.1",

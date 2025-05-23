@@ -29,4 +29,16 @@ model PassWallet {
   owner     String   // General Signable Message Admin
   createdAt DateTime @default(now())
   signedMessages SignMessageHistory[]
+  signDomainPermissions SignDomainPermission[]
+}
+
+model SignDomainPermission {
+  id        Int      @id @default(autoincrement())
+  domainUrl String   // URL of the dapp requesting signature
+  passAccount PassWallet @relation(fields: [passAccountId], references: [id])
+  passAccountId Int
+  allowedSigner String   // Address of the signer
+  updatedAt DateTime @updatedAt
+
+  @@unique([passAccountId, domainUrl, allowedSigner])
 }
