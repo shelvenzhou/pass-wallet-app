@@ -32,8 +32,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         domainUrl: domainUrl
       }
     });
-    console.log('Domain permission:', domainPermission);
-
     const allowedSigner = domainPermission?.allowedSigner || wallet.owner;
 
     // Add in domain validation
