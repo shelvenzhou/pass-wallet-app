@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { MessageRequest } from '../types';
-import toast from 'react-hot-toast';
 interface MessageModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -26,7 +25,6 @@ const MessageModal = ({
       await onSign();
     } finally {
       setIsProcessing(false);
-      toast.success('Signature approved');
     }
   };
 
@@ -36,7 +34,6 @@ const MessageModal = ({
       await onReject();
     } finally {
       setIsProcessing(false);
-      toast.error('Signature rejected');
     }
   };
 

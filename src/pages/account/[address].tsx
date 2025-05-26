@@ -156,6 +156,8 @@ const AccountDetailsPage: NextPage = () => {
       console.error('Error signing message:', error);
       toast.error("Failed to sign message");
     }
+    // OK
+    toast.success("Message signed successfully");
     setIsMessageModalOpen(false);
     updateActiveSessions(walletKit);
   }
@@ -208,9 +210,9 @@ const AccountDetailsPage: NextPage = () => {
         setIsLoading(false);
       }
     };
-
+  
     fetchAccountDetails();
-  }, [accountAddress]);
+  }, [accountAddress, activeSessions]);
 
   useEffect(() => {
     const initializeWalletKit = async () => {
