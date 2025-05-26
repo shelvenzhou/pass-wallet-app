@@ -19,23 +19,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const wallet = await prisma.passWallet.findUnique({
       where: { address }
     });
-
     if (!wallet) {
       return res.status(404).json({ error: 'Wallet not found' });
     }
     // TODO: More complex rule handling
     // Try to find in domain permissions (if not found, default to owner)
     console.log('Domain URL:', domainUrl);
-    const domainPermission = await prisma.signDomainPermission.findFirst({
+    const existingPermission = await prisma.signDomainPermission.findFirst({
       where: {
         passAccountId: wallet.id,
-        domainUrl: domainUrl
+        domainUrl: domainUrl,
       }
     });
-    const allowedSigner = domainPermission?.allowedSigner || wallet.owner;
+    const allowedSigner = existingPermission?.allowedSigner || wallet.owner;
 
     // Add in domain validation
     if (allowedSigner !== signerAddress) {
+      
+      console.log('allowedSigner not equal to signerAddress', allowedSigner, signerAddress);
       return res.status(403).json({ error: 'Not authorized to sign for this wallet' });
     }
 

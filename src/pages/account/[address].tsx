@@ -383,12 +383,15 @@ const AccountDetailsPage: NextPage = () => {
                   </button>
                 </div>
               </div>
-
+              
               <div style={cardStyle}>
                 <h2>Account Overview</h2>
-                <p>Address: {accountAddress}</p>
+                <b>Logged in as: {connectedAddress}</b>
+                <p>Account Address: {accountAddress}</p>
+
                 <p>Balance: {accountDetails.balance}</p>
                 <p>Owner: {accountDetails.owner}</p>
+                
               </div>
               <div style={cardStyle}>
                 <input style={inputStyle} type="text" id="walletconnect-uri" placeholder="Enter Walletconnect URI" />

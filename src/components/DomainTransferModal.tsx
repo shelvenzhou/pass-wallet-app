@@ -66,6 +66,9 @@ const DomainTransferModal = ({ isOpen, onClose, account, fromAddress }: DomainTr
       toast.error('Please enter a valid domain name');
       return;
     }
+    // Clean domainUrl - remove trailing slash
+    const cleanDomainUrl = domainUrl.replace(/\/$/, '');
+    setDomainUrl(cleanDomainUrl);
 
     try {
       setIsLoading(true);
@@ -78,7 +81,7 @@ const DomainTransferModal = ({ isOpen, onClose, account, fromAddress }: DomainTr
           passAccountAddress: account,
           fromAddress: fromAddress, // From address is the current logged in user address (not account address)
           toAddress: newOwner,
-          domainUrl: domainUrl,
+          domainUrl: cleanDomainUrl,
         }),
       });
 
