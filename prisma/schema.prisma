@@ -30,6 +30,7 @@ model PassWallet {
   createdAt DateTime @default(now())
   signedMessages SignMessageHistory[]
   signDomainPermissions SignDomainPermission[]
+  assets    Asset[]
 }
 
 model SignDomainPermission {
@@ -41,4 +42,19 @@ model SignDomainPermission {
   updatedAt DateTime @updatedAt
 
   @@unique([passAccountId, domainUrl, allowedSigner])
+}
+
+model Asset {
+  id        Int      @id @default(autoincrement())
+  symbol    String
+  name      String
+  balance   String   // Store as string to handle big numbers
+  decimals  Int      @default(18)
+  contractAddress String?
+  wallet    PassWallet @relation(fields: [walletId], references: [id])
+  walletId  Int
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([walletId, symbol])
 }

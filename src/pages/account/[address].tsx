@@ -9,6 +9,7 @@ import TransferModal from '../../components/TransferModal';
 import MessageModal from '../../components/MessageModal';
 import { MessageRequest } from '../../types';
 import DomainTransferModal from '../../components/DomainTransferModal';
+import AssetBalanceDisplay from '../../components/AssetBalanceDisplay';
 
 import { toast } from 'react-hot-toast';
 import { Core } from '@walletconnect/core';
@@ -18,6 +19,7 @@ import { buildApprovedNamespaces, getSdkError } from '@walletconnect/utils';
 import { ProposalTypes } from '@walletconnect/types';
 import { SUPPORTED_CHAINS, SUPPORTED_METHODS, SUPPORTED_EVENTS, CHAIN_NAME_MAP } from '../../constants';
 import { hexToString } from 'viem';
+import { AssetMonitor } from '../../services/assetMonitor';
 
 interface Transaction {
   hash: string;
@@ -65,6 +67,8 @@ const AccountDetailsPage: NextPage = () => {
   const [walletKit, setWalletKit] = useState<IWalletKit | null>(null);
   const [messageRequest, setMessageRequest] = useState<MessageRequest | null>(null);
   const [activeSessions, setActiveSessions] = useState<any[]>([]);
+
+  const [assetMonitor] = useState(() => new AssetMonitor());
 
   const handleApproveProposal = async () => {
     console.log("Approve proposal");
@@ -292,6 +296,27 @@ const AccountDetailsPage: NextPage = () => {
     // console.log(walletKit?.getActiveSessions());
   }, []);
 
+  useEffect(() => {
+    if (accountAddress) {
+      // Start monitoring for this account
+      assetMonitor.startMonitoring(accountAddress as string);
+
+      // Listen for balance updates
+      const handleBalanceUpdate = (event: CustomEvent) => {
+        if (event.detail.address === accountAddress) {
+          // Refresh account details
+          fetchAccountDetails();
+        }
+      };
+
+      window.addEventListener('assetBalanceUpdate', handleBalanceUpdate as EventListener);
+
+      return () => {
+        window.removeEventListener('assetBalanceUpdate', handleBalanceUpdate as EventListener);
+      };
+    }
+  }, [accountAddress]);
+
   const cardStyle = {
     padding: '24px',
     border: '1px solid #eaeaea',
@@ -492,6 +517,7 @@ const AccountDetailsPage: NextPage = () => {
                 )}
               </div>
             </div>
+            <AssetBalanceDisplay address={accountAddress as string} />
             <TransferModal
               isOpen={isTransferModalOpen}
               onClose={() => setIsTransferModalOpen(false)}
