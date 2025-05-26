@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import TransferModal from '../../components/TransferModal';
 import MessageModal from '../../components/MessageModal';
 import { MessageRequest } from '../../types';
+import DomainTransferModal from '../../components/DomainTransferModal';
 
 import { toast } from 'react-hot-toast';
 import { Core } from '@walletconnect/core';
@@ -49,6 +50,7 @@ const AccountDetailsPage: NextPage = () => {
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
+  const [isDomainTransferModalOpen, setIsDomainTransferModalOpen] = useState(false);
   const [accountDetails, setAccountDetails] = useState<{
     name: string;
     balance: string;
@@ -371,6 +373,14 @@ const AccountDetailsPage: NextPage = () => {
                   >
                     PASS Transfer
                   </button>
+                  <button 
+                    style={{...buttonStyle, backgroundColor: '#4CAF50'}}
+                    onClick={() => {
+                      setIsDomainTransferModalOpen(true);
+                    }}
+                  >
+                    Transfer Domain
+                  </button>
                 </div>
               </div>
 
@@ -495,6 +505,12 @@ const AccountDetailsPage: NextPage = () => {
               onSign={handleApproveProposal}
               onReject={handleRejectProposal}
               messageRequest={messageRequest || undefined}
+            />
+            <DomainTransferModal
+              isOpen={isDomainTransferModalOpen}
+              onClose={() => setIsDomainTransferModalOpen(false)}
+              account={accountAddress as string}
+              fromAddress={connectedAddress as string}
             />
           </>
         ) : (

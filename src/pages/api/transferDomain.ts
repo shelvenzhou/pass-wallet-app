@@ -14,17 +14,21 @@ export default async function handler(
 
   try {
     // Delegates domainURL fromAddress to toAddress
-    const { passAccountAddress,fromAddress, toAddress, domainUrl } = req.body;
+    const { passAccountAddress, fromAddress, toAddress, domainUrl } = req.body;
 
     if (!passAccountAddress || !fromAddress || !toAddress || !domainUrl) {
       return res.status(400).json({
         error: 'Missing required fields: passAccountAddress, fromAddress, toAddress, and domainUrl are required'
       });
     }
-
     const wallet = await prisma.passWallet.findUnique({
         where: { address: passAccountAddress }
       });
+    
+    // console.log('passAccountAddress', passAccountAddress);
+    // console.log('fromAddress', fromAddress);
+    // console.log('toAddress', toAddress);
+    // console.log('domainUrl', domainUrl);
 
     if (!wallet) {
       return res.status(404).json({ error: 'PASS account not found' });
@@ -40,7 +44,8 @@ export default async function handler(
     const allowedSigner = existingPermission?.allowedSigner || wallet.owner;
 
     if (allowedSigner !== fromAddress) {
-      return res.status(404).json({ error: 'Domain permission not found' });
+      console.log('allowedSigner not equal to fromAddress', allowedSigner, fromAddress);
+      return res.status(403).json({ error: 'Not authorized to transfer domain permission' });
     }
 
     // Create new permission for destination wallet
@@ -54,10 +59,12 @@ export default async function handler(
       }
     });
 
-    // Delete the old permission
-    await prisma.signDomainPermission.delete({
-      where: { id: existingPermission?.id }
-    });
+    // Delete the old permission if exists
+    if (existingPermission) {
+      await prisma.signDomainPermission.delete({
+        where: { id: existingPermission?.id }
+      });
+    }
 
     return res.status(200).json({
       message: 'Domain permission transferred successfully',
