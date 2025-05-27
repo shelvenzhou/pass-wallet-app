@@ -503,8 +503,12 @@ const AccountDetailsPage: NextPage = () => {
       return;
     }
     await walletKit.pair({ uri });
-    // toast.success('WalletConnect session established');
+    toast.success('WalletConnect session established');
     // Log the active sessions
+    console.log(
+      "WalletConnect session established"
+    )
+    console.log(walletKit?.getActiveSessions());
   };
 
   // Convert object to array when setting sessions
@@ -1123,6 +1127,13 @@ const AccountDetailsPage: NextPage = () => {
         messageRequest={messageRequest as MessageRequest}
         onSign={handleApproveSignRequest}
         onReject={handleRejectRequest}
+      />
+      <MessageModal
+        isOpen={isProposalModalOpen}
+        onClose={() => setIsProposalModalOpen(false)}
+        onSign={handleApproveProposal}
+        onReject={handleRejectProposal}
+        messageRequest={messageRequest || undefined}
       />
     </div>
   );

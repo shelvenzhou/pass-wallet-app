@@ -54,6 +54,7 @@ model Asset {
 
   tokenType       TokenType
   contractAddress String?   // null for ETH
+  tokenId         String?   // for ERC721/1155
   symbol          String
   name            String
   decimals        Int       @default(18)
@@ -62,6 +63,7 @@ model Asset {
   updatedAt       DateTime  @updatedAt
 
   balances        SubaccountBalance[]
+  inboxTransactions InboxTransaction[]
 
   @@unique([walletId, tokenType, contractAddress])
 }
@@ -92,24 +94,19 @@ model SubaccountBalance {
   @@unique([subaccountId, assetId])
 }
 
-
 model InboxTransaction {
   id               Int         @id @default(autoincrement())
   wallet           PassWallet  @relation(fields: [walletId], references: [id])
   walletId         Int
 
+  asset            Asset?      @relation(fields: [assetId], references: [id])
+  assetId          Int?
+
   transactionHash  String      @unique
   blockNumber      String
-  tokenType        TokenType
-  contractAddress  String?     // For ERC20/721/1155
-  tokenId          String?     // For NFTs
   amount           String
   fromAddress      String
   toAddress        String
-
-  symbol           String
-  name             String
-  decimals         Int         @default(18)
 
   claimed          Boolean     @default(false)
   claimedAt        DateTime?
