@@ -1,0 +1,339 @@
+import type { NextApiRequest, NextApiResponse } from 'next';
+import { prisma } from '../../../lib/prisma';
+
+const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || '';
+const ETHERSCAN_BASE = 'https://api-sepolia.etherscan.io/api'; // change to mainnet if needed
+
+interface MonitorResult {
+  wallet: string;
+  fromBlock: string;
+  toBlock: string;
+  newTransactions: number;
+  ethTransactions: number;
+  erc20Transactions: number;
+  erc721Transactions: number;
+  erc1155Transactions: number;
+}
+
+interface EtherscanTransaction {
+  hash: string;
+  blockNumber: string;
+  from: string;
+  to: string;
+  value: string;
+  contractAddress?: string;
+  tokenName?: string;
+  tokenSymbol?: string;
+  tokenDecimal?: string;
+  tokenID?: string;
+}
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse<MonitorResult | { error: string }>
+) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const { wallet, fromBlock = '0' } = req.body;
+
+    if (!wallet) {
+      return res.status(400).json({ error: 'Wallet address is required' });
+    }
+
+    // Verify wallet exists in database
+    const passWallet = await prisma.passWallet.findUnique({
+      where: { address: wallet }
+    });
+
+    if (!passWallet) {
+      return res.status(404).json({ error: 'Wallet not found' });
+    }
+
+    // Get current block number
+    const currentBlockUrl = new URL(ETHERSCAN_BASE);
+    currentBlockUrl.searchParams.set('module', 'proxy');
+    currentBlockUrl.searchParams.set('action', 'eth_blockNumber');
+    currentBlockUrl.searchParams.set('apikey', ETHERSCAN_API_KEY);
+    
+    const currentBlockResponse = await fetch(currentBlockUrl.toString());
+    const currentBlockData = await currentBlockResponse.json();
+    const currentBlock = parseInt(currentBlockData.result, 16).toString();
+    
+    let newTransactions = 0;
+    let ethTransactions = 0;
+    let erc20Transactions = 0;
+    let erc721Transactions = 0;
+    let erc1155Transactions = 0;
+
+    // Monitor ETH transfers
+    const ethTxs = await monitorEthTransfers(wallet, fromBlock, currentBlock, passWallet.id);
+    ethTransactions = ethTxs;
+    newTransactions += ethTxs;
+
+    // Monitor ERC20 transfers
+    const erc20Txs = await monitorERC20Transfers(wallet, fromBlock, currentBlock, passWallet.id);
+    erc20Transactions = erc20Txs;
+    newTransactions += erc20Txs;
+
+    // Monitor ERC721 transfers
+    const erc721Txs = await monitorERC721Transfers(wallet, fromBlock, currentBlock, passWallet.id);
+    erc721Transactions = erc721Txs;
+    newTransactions += erc721Txs;
+
+    // Monitor ERC1155 transfers
+    const erc1155Txs = await monitorERC1155Transfers(wallet, fromBlock, currentBlock, passWallet.id);
+    erc1155Transactions = erc1155Txs;
+    newTransactions += erc1155Txs;
+
+    return res.status(200).json({
+      wallet,
+      fromBlock,
+      toBlock: currentBlock,
+      newTransactions,
+      ethTransactions,
+      erc20Transactions,
+      erc721Transactions,
+      erc1155Transactions
+    });
+
+  } catch (error) {
+    console.error('Error monitoring inbox:', error);
+    return res.status(500).json({ 
+      error: 'Failed to monitor inbox',
+    });
+  }
+}
+
+async function monitorEthTransfers(
+  walletAddress: string, 
+  fromBlock: string, 
+  toBlock: string, 
+  walletId: number
+): Promise<number> {
+  let newTransactions = 0;
+
+  try {
+    const url = new URL(ETHERSCAN_BASE);
+    url.searchParams.set('module', 'account');
+    url.searchParams.set('action', 'txlist');
+    url.searchParams.set('address', walletAddress);
+    url.searchParams.set('startblock', fromBlock);
+    url.searchParams.set('endblock', toBlock);
+    url.searchParams.set('sort', 'desc');
+    url.searchParams.set('apikey', ETHERSCAN_API_KEY);
+
+    const response = await fetch(url.toString());
+    const data = await response.json();
+    const transactions = data.result;
+    
+    if (Array.isArray(transactions)) {
+      for (const tx of transactions) {
+        // Only process incoming ETH transactions with value > 0
+        if (
+          tx.to?.toLowerCase() === walletAddress.toLowerCase() && 
+          tx.value !== '0' &&
+          tx.isError === '0'
+        ) {
+          // Check if transaction already exists
+          const existingTx = false;
+
+          if (!existingTx) {
+            const data = {
+              walletId,
+              transactionHash: tx.hash,
+              blockNumber: tx.blockNumber,
+              tokenType: 'ETH',
+              amount: tx.value,
+              fromAddress: tx.from,
+              toAddress: tx.to,
+              symbol: 'ETH',
+              name: 'Ethereum',
+              decimals: 18
+            };
+            console.log('ETH Transfer:', data);
+            newTransactions++;
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error monitoring ETH transfers:', error);
+  }
+
+  return newTransactions;
+}
+
+async function monitorERC20Transfers(
+  walletAddress: string,
+  fromBlock: string,
+  toBlock: string,
+  walletId: number
+): Promise<number> {
+  let newTransactions = 0;
+
+  try {
+    const url = new URL(ETHERSCAN_BASE);
+    url.searchParams.set('module', 'account');
+    url.searchParams.set('action', 'tokentx');
+    url.searchParams.set('address', walletAddress);
+    url.searchParams.set('startblock', fromBlock);
+    url.searchParams.set('endblock', toBlock);
+    url.searchParams.set('sort', 'desc');
+    url.searchParams.set('apikey', ETHERSCAN_API_KEY);
+
+    console.log('ETHERSCAN_API_KEY', ETHERSCAN_API_KEY);
+
+    console.log('url', url.toString());
+
+    const response = await fetch(url.toString());
+    const data = await response.json();
+    const transactions = data.result;
+
+    if (Array.isArray(transactions)) {
+      for (const tx of transactions) {
+        // Only process incoming ERC20 transfers
+        if (tx.to?.toLowerCase() === walletAddress.toLowerCase()) {
+          // Check if transaction already exists
+          const existingTx = false;
+
+          if (!existingTx) {
+            const data = {
+              walletId,
+              transactionHash: tx.hash,
+              blockNumber: tx.blockNumber,
+              tokenType: 'ERC20',
+              contractAddress: tx.contractAddress,
+              amount: tx.value,
+              fromAddress: tx.from,
+              toAddress: tx.to,
+              symbol: tx.tokenSymbol || 'UNKNOWN',
+              name: tx.tokenName || 'Unknown Token',
+              decimals: parseInt(tx.tokenDecimal || '18')
+            };
+            console.log('ERC20 Transfer:', data);
+            newTransactions++;
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error monitoring ERC20 transfers:', error);
+  }
+
+  return newTransactions;
+}
+
+async function monitorERC721Transfers(
+  walletAddress: string,
+  fromBlock: string,
+  toBlock: string,
+  walletId: number
+): Promise<number> {
+  let newTransactions = 0;
+
+  try {
+    const url = new URL(ETHERSCAN_BASE);
+    url.searchParams.set('module', 'account');
+    url.searchParams.set('action', 'tokennfttx');
+    url.searchParams.set('address', walletAddress);
+    url.searchParams.set('startblock', fromBlock);
+    url.searchParams.set('endblock', toBlock);
+    url.searchParams.set('sort', 'desc');
+    url.searchParams.set('apikey', ETHERSCAN_API_KEY);
+
+    const response = await fetch(url.toString());
+    const data = await response.json();
+    const transactions = data.result;
+
+    if (Array.isArray(transactions)) {
+      for (const tx of transactions) {
+        // Only process incoming ERC721 transfers
+        if (tx.to?.toLowerCase() === walletAddress.toLowerCase()) {
+          // Check if transaction already exists
+          const existingTx = false;
+
+          if (!existingTx) {
+            const data = {
+              walletId,
+              transactionHash: tx.hash,
+              blockNumber: tx.blockNumber,
+              tokenType: 'ERC721',
+              contractAddress: tx.contractAddress,
+              tokenId: tx.tokenID,
+              amount: '1',
+              fromAddress: tx.from,
+              toAddress: tx.to,
+              symbol: tx.tokenSymbol || 'NFT',
+              name: tx.tokenName || 'Unknown NFT'
+            };
+            console.log('ERC721 Transfer:', data);
+            newTransactions++;
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error monitoring ERC721 transfers:', error);
+  }
+
+  return newTransactions;
+}
+
+async function monitorERC1155Transfers(
+  walletAddress: string,
+  fromBlock: string,
+  toBlock: string,
+  walletId: number
+): Promise<number> {
+  let newTransactions = 0;
+
+  try {
+    const url = new URL(ETHERSCAN_BASE);
+    url.searchParams.set('module', 'account');
+    url.searchParams.set('action', 'token1155tx');
+    url.searchParams.set('address', walletAddress);
+    url.searchParams.set('startblock', fromBlock);
+    url.searchParams.set('endblock', toBlock);
+    url.searchParams.set('sort', 'desc');
+    url.searchParams.set('apikey', ETHERSCAN_API_KEY);
+
+    const response = await fetch(url.toString());
+    const data = await response.json();
+    const transactions = data.result;
+
+    if (Array.isArray(transactions)) {
+      for (const tx of transactions) {
+        // Only process incoming ERC1155 transfers
+        if (tx.to?.toLowerCase() === walletAddress.toLowerCase()) {
+          // Check if transaction already exists
+          const existingTx = false;
+
+          if (!existingTx) {
+            const data = {
+              walletId,
+              transactionHash: tx.hash,
+              blockNumber: tx.blockNumber,
+              tokenType: 'ERC1155',
+              contractAddress: tx.contractAddress,
+              tokenId: tx.tokenID,
+              amount: tx.tokenValue || '0',
+              fromAddress: tx.from,
+              toAddress: tx.to,
+              symbol: tx.tokenSymbol || 'ERC1155',
+              name: tx.tokenName || 'ERC1155 Token'
+            };
+            console.log('ERC1155 Transfer:', data);
+            newTransactions++;
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error monitoring ERC1155 transfers:', error);
+  }
+
+  return newTransactions;
+} 
