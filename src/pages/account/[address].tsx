@@ -19,6 +19,18 @@ import { ProposalTypes } from '@walletconnect/types';
 import { SUPPORTED_CHAINS, SUPPORTED_METHODS, SUPPORTED_EVENTS, CHAIN_NAME_MAP } from '../../constants';
 import { hexToString } from 'viem';
 
+// FontAwesome imports
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { 
+  faUser, 
+  faLink, 
+  faMapMarkerAlt, 
+  faWallet, 
+  faCrown, 
+  faCopy,
+  faSync
+} from '@fortawesome/free-solid-svg-icons';
+
 interface Transaction {
   hash: string;
   type: 'send' | 'receive';
@@ -240,7 +252,7 @@ const AccountDetailsPage: NextPage = () => {
       
       try {
         setIsLoading(true);
-        const response = await fetch(`/api/account/${accountAddress}`);
+        const response = await fetch(`/api/account/${accountAddress}?connectedAddress=${connectedAddress}`);
         const data = await response.json();
         
         if (response.ok) {
@@ -498,11 +510,23 @@ const AccountDetailsPage: NextPage = () => {
   // Convert object to array when setting sessions
   const updateActiveSessions = (walletKit: IWalletKit | null) => {
     // clear input field
-    (document.getElementById('walletconnect-uri') as HTMLInputElement).value = '';
+    if (document.getElementById('walletconnect-uri') as HTMLInputElement) {
+      (document.getElementById('walletconnect-uri') as HTMLInputElement).value = '';
+    }
     const sessions = walletKit?.getActiveSessions() || {};
     setActiveSessions(Object.values(sessions));
     // Update signed messages history
 
+  };
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied to clipboard!`);
+    } catch (err) {
+      console.error('Failed to copy: ', err);
+      toast.error('Failed to copy to clipboard');
+    }
   };
 
   return (
@@ -547,69 +571,358 @@ const AccountDetailsPage: NextPage = () => {
                 </div>
               </div>
               
-              <div style={cardStyle}>
-                <h2>Account Overview</h2>
-                <b>Logged in as: {connectedAddress}</b>
-                <p>Account Address: {accountAddress}</p>
-
-                <p>Balance: {accountDetails.balance}</p>
-                <p>Owner: {accountDetails.owner}</p>
+              <div style={{
+                ...cardStyle,
+                backgroundColor: 'white',
+                position: 'relative',
+                overflow: 'hidden'
+              }}>
                 
-              </div>
-              <div style={cardStyle}>
-                <input style={inputStyle} type="text" id="walletconnect-uri" placeholder="Enter Walletconnect URI" />
-                <button style={buttonStyle} onClick={handleConnect}>Walletconnect Login</button>
-              </div>
-              <div style={cardStyle}>
-                <h2>Active Sessions</h2>
-                {activeSessions.length === 0 ? (
-                  <p style={{ color: '#666' }}>No active sessions</p>
-                ) : (
-                  activeSessions.map((session, index) => (
-                    <div
-                      key={session.topic}
-                      style={{
-                        padding: '16px',
-                        borderBottom: index < activeSessions.length - 1 ? '1px solid #eaeaea' : 'none',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: '500' }}>{session.peer.metadata.name}</div>
-                        <div style={{ color: '#666', fontSize: '0.9rem' }}>
-                          {session.peer.metadata.url}
-                        </div>
-                        <div style={{ color: '#666', fontSize: '0.9rem' }}>
-                          Chains: {Object.keys(session.namespaces).map(namespace => 
-                            session.namespaces[namespace].chains?.map((chain: string) => {
-                              const chainId = chain.split(':')[1];
-                              return CHAIN_NAME_MAP[chainId] || chainId;
-                            }).join(', ')
-                          ).join(', ')}
-                        </div>
+                <div style={{ position: 'relative', zIndex: 2 }}>
+                <h2 style={{ marginBottom: '20px' }}>Account Overview</h2>
+                  
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+                    gap: '20px',
+                    marginBottom: '20px'
+                  }}>
+                  
+
+                    {/* Account Address Card */}
+                    <div style={{
+                      background: '#f8f9fa',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      border: '1px solid #e9ecef'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        marginBottom: '12px',
+                        fontSize: '16px',
+                        fontWeight: '500',
+                        color: '#333'
+                      }}>
+                        <FontAwesomeIcon 
+                          icon={faMapMarkerAlt} 
+                          style={{ marginRight: '8px', fontSize: '18px' }} 
+                        />
+                        Account Address
                       </div>
-                      <button
-                        style={{
-                          ...buttonStyle,
-                          backgroundColor: '#dc3545',
-                          padding: '8px 16px'
-                        }}
-                        onClick={async () => {
-                          await walletKit?.disconnectSession({
-                            topic: session.topic,
-                            reason: getSdkError("USER_DISCONNECTED")
-                          });
-                          updateActiveSessions(walletKit);
-                          toast.success('Session disconnected');
-                        }}
-                      >
-                        Disconnect
-                      </button>
+                      <div style={{ 
+                        display: 'flex',
+                        alignItems: 'center',
+                        background: '#e9ecef',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        gap: '8px'
+                      }}>
+                        <div style={{ 
+                          fontFamily: 'monospace',
+                          fontSize: '14px',
+                          wordBreak: 'break-all',
+                          color: '#495057',
+                          flex: 1
+                        }}>
+                          {accountAddress}
+                        </div>
+                        <button
+                          onClick={() => copyToClipboard(accountAddress as string, 'Account address')}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '14px',
+                            color: '#666',
+                            transition: 'color 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = '#333'}
+                          onMouseLeave={(e) => e.currentTarget.style.color = '#666'}
+                        >
+                          <FontAwesomeIcon icon={faCopy} />
+                        </button>
+                      </div>
                     </div>
-                  ))
-                )}
+                     {/* Connected User Card */}
+                     <div style={{
+                      background: '#f8f9fa',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      border: '1px solid #e9ecef'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        marginBottom: '12px',
+                        fontSize: '16px',
+                        fontWeight: '500',
+                        color: '#333'
+                      }}>
+                        <FontAwesomeIcon 
+                          icon={faLink} 
+                          style={{ marginRight: '8px', fontSize: '18px' }} 
+                        />
+                        Connected As
+                      </div>
+                      <div style={{ 
+                        display: 'flex',
+                        alignItems: 'center',
+                        background: '#e9ecef',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        gap: '8px'
+                      }}>
+                        <div style={{ 
+                          fontFamily: 'monospace',
+                          fontSize: '14px',
+                          wordBreak: 'break-all',
+                          color: '#495057',
+                          flex: 1
+                        }}>
+                          {connectedAddress}
+                        </div>
+                        <button
+                          onClick={() => copyToClipboard(connectedAddress || '', 'Connected address')}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '14px',
+                            color: '#666',
+                            transition: 'color 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = '#333'}
+                          onMouseLeave={(e) => e.currentTarget.style.color = '#666'}
+                        >
+                          <FontAwesomeIcon icon={faCopy} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                    gap: '20px'
+                  }}>
+                    {/* Balance Card */}
+                    <div style={{
+                      background: '#f8f9fa',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      border: '1px solid #e9ecef',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ 
+                        fontSize: '32px',
+                        marginBottom: '8px',
+                      }}>
+                        <FontAwesomeIcon icon={faWallet} />
+                      </div>
+                      <div style={{ 
+                        fontSize: '14px',
+                        color: '#666',
+                        marginBottom: '4px'
+                      }}>Balance</div>
+                      <div style={{ 
+                        fontSize: '20px',
+                        fontWeight: '600',
+                        color: '#333'
+                      }}>
+                        {accountDetails.balance}
+                      </div>
+                    </div>
+
+                    {/* Owner Card */}
+                    <div style={{
+                      background: '#f8f9fa',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      border: '1px solid #e9ecef',
+                      textAlign: 'center'
+                      
+                    }}>
+                      <div style={{ 
+                        fontSize: '32px',
+                        marginBottom: '8px',
+                        
+                      }}>
+                        <FontAwesomeIcon icon={faCrown} />
+                      </div>
+                      <div style={{ 
+                        fontSize: '14px',
+                        color: '#666',
+                        marginBottom: '4px'
+                      }}>Owner</div>
+                      <div style={{ 
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: '#e9ecef',
+                        padding: '6px 8px',
+                        borderRadius: '4px',
+                        gap: '8px'
+                      }}>
+                        <div style={{ 
+                          fontSize: '14px',
+                          fontFamily: 'monospace',
+                          wordBreak: 'break-all',
+                          color: '#495057',
+                          flex: 1,
+                          textAlign: 'center'
+                        }}>
+                          {accountDetails.owner}
+                        </div>
+                        <button
+                          onClick={() => copyToClipboard(accountDetails.owner, 'Owner address')}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '2px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '12px',
+                            color: '#666',
+                            transition: 'color 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = '#333'}
+                          onMouseLeave={(e) => e.currentTarget.style.color = '#666'}
+                        >
+                          <FontAwesomeIcon icon={faCopy} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style={cardStyle}>
+                <h2 style={{ marginBottom: '20px' }}>Connection Manager</h2>
+                
+                {/* Connection Input Section */}
+                <div style={{ 
+                  marginBottom: '24px',
+                  padding: '16px',
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: '8px',
+                  border: '1px solid #e9ecef'
+                }}>
+                  <h3 style={{ 
+                    margin: '0 0 12px 0', 
+                    fontSize: '16px', 
+                    fontWeight: '500',
+                    color: '#333'
+                  }}>
+                    Connect New Session
+                  </h3>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1 }}>
+                      <input 
+                        style={{
+                          ...inputStyle,
+                          marginBottom: '0'
+                        }} 
+                        type="text" 
+                        id="walletconnect-uri" 
+                        placeholder="Enter WalletConnect URI" 
+                      />
+                    </div>
+                    <button style={buttonStyle} onClick={handleConnect}>
+                      Connect
+                    </button>
+                  </div>
+                </div>
+
+                {/* Active Sessions Section */}
+                <div>
+                  <h3 style={{ 
+                    margin: '0 0 16px 0', 
+                    fontSize: '16px', 
+                    fontWeight: '500',
+                    color: '#333'
+                  }}>
+                    Active Sessions ({activeSessions.length})
+                  </h3>
+                  {activeSessions.length === 0 ? (
+                    <div style={{
+                      padding: '20px',
+                      textAlign: 'center',
+                      color: '#666',
+                      backgroundColor: '#f8f9fa',
+                      borderRadius: '8px',
+                      border: '1px solid #e9ecef'
+                    }}>
+                      No active sessions. Connect to a dApp using the URI above.
+                    </div>
+                  ) : (
+                    <div style={{
+                      border: '1px solid #e9ecef',
+                      borderRadius: '8px',
+                      overflow: 'hidden'
+                    }}>
+                      {activeSessions.map((session, index) => (
+                        <div
+                          key={session.topic}
+                          style={{
+                            padding: '16px',
+                            borderBottom: index < activeSessions.length - 1 ? '1px solid #eaeaea' : 'none',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            backgroundColor: 'white'
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: '500', marginBottom: '4px' }}>
+                              {session.peer.metadata.name}
+                            </div>
+                            <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '2px' }}>
+                              {session.peer.metadata.url}
+                            </div>
+                            <div style={{ color: '#666', fontSize: '0.9rem' }}>
+                              Chains: {Object.keys(session.namespaces).map(namespace => 
+                                session.namespaces[namespace].chains?.map((chain: string) => {
+                                  const chainId = chain.split(':')[1];
+                                  return CHAIN_NAME_MAP[chainId] || chainId;
+                                }).join(', ')
+                              ).join(', ')}
+                            </div>
+                          </div>
+                          <button
+                            style={{
+                              ...buttonStyle,
+                              backgroundColor: '#dc3545',
+                              padding: '8px 16px'
+                            }}
+                            onClick={async () => {
+                              await walletKit?.disconnectSession({
+                                topic: session.topic,
+                                reason: getSdkError("USER_DISCONNECTED")
+                              });
+                              updateActiveSessions(walletKit);
+                              toast.success('Session disconnected');
+                            }}
+                          >
+                            Disconnect
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div style={cardStyle}>
                 <div style={{ borderBottom: '1px solid #eaeaea', marginBottom: '20px' }}>
@@ -634,11 +947,20 @@ const AccountDetailsPage: NextPage = () => {
                         ...buttonStyle,
                         backgroundColor: '#28a745',
                         padding: '8px 16px',
-                        fontSize: '0.9rem'
+                        fontSize: '0.9rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        marginLeft: 'auto'
                       }}
                       onClick={refreshInboxTransactions}
                       disabled={isLoadingInbox}
                     >
+                      <FontAwesomeIcon 
+                        icon={faSync} 
+                        spin={isLoadingInbox}
+                        style={{ fontSize: '0.8rem' }}
+                      />
                       {isLoadingInbox ? 'Loading...' : 'Refresh Inbox'}
                     </button>
                   </div>

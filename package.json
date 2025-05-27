@@ -9,6 +9,9 @@
     "enclave": "cd enclave-kms && source venv/bin/activate && python3 enclave_api.py"
   },
   "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^6.7.2",
+    "@fortawesome/free-solid-svg-icons": "^6.7.2",
+    "@fortawesome/react-fontawesome": "^0.2.2",
     "@prisma/client": "^6.4.1",
     "@rainbow-me/rainbowkit": "^2.2.3",
     "@tanstack/react-query": "^5.55.3",

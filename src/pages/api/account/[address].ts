@@ -28,24 +28,54 @@ type AccountData = {
   }>;
 };
 
+// Simple in-memory cache for ETH balances
+const balanceCache = new Map<string, { balance: string; timestamp: number }>();
+const CACHE_DURATION = 30000; // 30 seconds
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<AccountData>
 ) {
-  const { address } = req.query;
+  const { address, connectedAddress } = req.query;
 
   try {
-    // Fetch ETH balance from Etherscan API
-    const etherscanResponse = await fetch(
-      `https://api.etherscan.io/v2/api?chainid=11155111&module=account&action=balance&address=${address}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY || ''}`
-    );
+    let ethBalance = '0.0000';
     
-    const etherscanData = await etherscanResponse.json();
+    // Check cache first
+    const cached = balanceCache.get(address as string);
+    const now = Date.now();
     
-    // Convert from wei to ETH (divide by 10^18)
-    const ethBalance = etherscanData.status === '1' 
-      ? (parseInt(etherscanData.result) / Math.pow(10, 18)).toFixed(4)
-      : '0.0000';
+    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
+      ethBalance = cached.balance;
+      // console.log('Using cached ETH balance:', ethBalance);
+    } else {
+      // Try to fetch from Etherscan
+      try {
+        const etherscanResponse = await fetch(
+          `https://api.etherscan.io/v2/api?chainid=11155111&module=account&action=balance&address=${address}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY || ''}`
+        );
+        
+        const etherscanData = await etherscanResponse.json();
+        console.log("etherscanData", etherscanData);
+        
+        if (etherscanData.status === '1') {
+          ethBalance = (parseInt(etherscanData.result) / Math.pow(10, 18)).toFixed(4);
+          // Cache the successful result
+          balanceCache.set(address as string, { balance: ethBalance, timestamp: now });
+        } else if (cached) {
+          // Use stale cache if API fails but we have cached data
+          ethBalance = cached.balance;
+          console.log('Etherscan API failed, using stale cache:', ethBalance);
+        }
+      } catch (fetchError) {
+        console.error('Etherscan API error:', fetchError);
+        if (cached) {
+          // Use stale cache if fetch fails
+          ethBalance = cached.balance;
+          console.log('Fetch failed, using stale cache:', ethBalance);
+        }
+      }
+    }
 
     // Fetch wallet data from database
     const wallet = await prisma.passWallet.findUnique({
@@ -107,6 +137,11 @@ export default async function handler(
         },
       ],
       signedMessages: (wallet?.signedMessages || [])
+        .filter((msg: any) => 
+          connectedAddress ? 
+            msg.signer.toLowerCase() === (connectedAddress as string).toLowerCase() : 
+            true
+        )
         .sort((a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime())
         .map((msg: any) => ({
           message: msg.message,
