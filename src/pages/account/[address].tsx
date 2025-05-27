@@ -1068,7 +1068,7 @@ const AccountDetailsPage: NextPage = () => {
                               )}
                               
                               <div style={{ color: '#666', fontSize: '0.8rem' }}>
-                                {new Date(tx.createdAt).toLocaleString()}
+                                Last Updated: {new Date(tx.createdAt).toLocaleString()}
                               </div>
                             </div>
                             
