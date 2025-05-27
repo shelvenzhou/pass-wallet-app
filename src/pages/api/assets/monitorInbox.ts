@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '../../../lib/prisma';
+import { TokenType } from '@prisma/client';
 
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || '';
 const ETHERSCAN_BASE = 'https://api.etherscan.io/v2/api';
@@ -68,21 +69,25 @@ export default async function handler(
     let erc1155Transactions = 0;
 
     // Monitor ETH transfers
+    console.log('Monitoring ETH transfers');
     const ethTxs = await monitorEthTransfers(wallet, fromBlock, currentBlock, passWallet.id);
     ethTransactions = ethTxs;
     newTransactions += ethTxs;
 
     // Monitor ERC20 transfers
+    console.log('Monitoring ERC20 transfers');
     const erc20Txs = await monitorERC20Transfers(wallet, fromBlock, currentBlock, passWallet.id);
     erc20Transactions = erc20Txs;
     newTransactions += erc20Txs;
 
     // Monitor ERC721 transfers
+    console.log('Monitoring ERC721 transfers');
     const erc721Txs = await monitorERC721Transfers(wallet, fromBlock, currentBlock, passWallet.id);
     erc721Transactions = erc721Txs;
     newTransactions += erc721Txs;
 
     // Monitor ERC1155 transfers
+    console.log('Monitoring ERC1155 transfers');
     const erc1155Txs = await monitorERC1155Transfers(wallet, fromBlock, currentBlock, passWallet.id);
     erc1155Transactions = erc1155Txs;
     newTransactions += erc1155Txs;
@@ -90,7 +95,10 @@ export default async function handler(
     // Get all transactions from database by most recent
     const transactions = await prisma.inboxTransaction.findMany({
       where: { walletId: passWallet.id },
-      orderBy: { createdAt: 'desc' }
+      include: {
+        asset: true
+      },
+      orderBy: { blockNumber: 'desc' }
     });
 
     return res.status(200).json({
@@ -99,16 +107,16 @@ export default async function handler(
       toBlock: currentBlock,
       transactions: transactions.map(tx => ({
         hash: tx.transactionHash,
-        tokenType: tx.tokenType,
+        tokenType: tx.asset?.tokenType || 'ETH',
         blockNumber: tx.blockNumber,
         from: tx.fromAddress,
         to: tx.toAddress,
         value: tx.amount,
-        contractAddress: tx.contractAddress || undefined,
-        tokenName: tx.name,
-        tokenSymbol: tx.symbol,
-        tokenDecimal: tx.decimals.toString(),
-        tokenID: tx.tokenId?.toString() || undefined
+        contractAddress: tx.asset?.contractAddress || undefined,
+        tokenName: tx.asset?.name,
+        tokenSymbol: tx.asset?.symbol,
+        tokenDecimal: tx.asset?.decimals.toString() || '18',
+        tokenID: tx.asset?.tokenId?.toString() || undefined
       }))
     });
 
@@ -142,6 +150,8 @@ async function monitorEthTransfers(
     const response = await fetch(url.toString());
     const data = await response.json();
     const transactions = data.result;
+
+    console.log('transactions', transactions);
     
     if (Array.isArray(transactions)) {
       for (const tx of transactions) {
@@ -151,6 +161,29 @@ async function monitorEthTransfers(
           tx.value !== '0' &&
           tx.isError === '0'
         ) {
+
+          // Check if ether as an Asset exists
+          let asset = await prisma.asset.findFirst({
+            where: { 
+              walletId: walletId,
+              tokenType: TokenType.ETH,
+              contractAddress: null
+            }
+          });
+
+          if (!asset) {
+            asset = await prisma.asset.create({
+              data: {
+                walletId: walletId,
+                tokenType: TokenType.ETH,
+                contractAddress: null,
+                symbol: 'ETH',
+                name: 'Ethereum',
+                decimals: 18
+              }
+            });
+          }
+
           // Check if transaction already exists
           const existingTx = await prisma.inboxTransaction.findUnique({
             where: { transactionHash: tx.hash }
@@ -160,20 +193,16 @@ async function monitorEthTransfers(
             await prisma.inboxTransaction.create({
               data: {
                 walletId,
+                assetId: asset.id,
                 transactionHash: tx.hash,
                 blockNumber: tx.blockNumber,
-                tokenType: 'ETH',
                 amount: tx.value,
                 fromAddress: tx.from,
                 toAddress: tx.to,
-                symbol: 'ETH',
-                name: 'Ethereum',
-                decimals: 18
               }
             });
             console.log('ETH Transfer saved:', tx.hash);
             newTransactions++;
-
           }
         }
       }
@@ -204,10 +233,6 @@ async function monitorERC20Transfers(
     url.searchParams.set('sort', 'desc');
     url.searchParams.set('apikey', ETHERSCAN_API_KEY);
 
-    console.log('ETHERSCAN_API_KEY', ETHERSCAN_API_KEY);
-
-    console.log('url', url.toString());
-
     const response = await fetch(url.toString());
     const data = await response.json();
     const transactions = data.result;
@@ -216,8 +241,31 @@ async function monitorERC20Transfers(
       for (const tx of transactions) {
         // Only process incoming ERC20 transfers
         if (tx.to?.toLowerCase() === walletAddress.toLowerCase()) {
+          
+          // Check if ERC20 asset exists
+          let asset = await prisma.asset.findFirst({
+            where: { 
+              walletId: walletId,
+              tokenType: TokenType.ERC20,
+              contractAddress: tx.contractAddress
+            }
+          });
+
+          if (!asset) {
+            asset = await prisma.asset.create({
+              data: {
+                walletId: walletId,
+                tokenType: TokenType.ERC20,
+                contractAddress: tx.contractAddress,
+                symbol: tx.tokenSymbol || 'UNKNOWN',
+                name: tx.tokenName || 'Unknown Token',
+                decimals: parseInt(tx.tokenDecimal || '18')
+              }
+            });
+          }
+
           // Check if transaction already exists
-          const existingTx = await prisma.inboxTransaction?.findUnique({
+          const existingTx = await prisma.inboxTransaction.findUnique({
             where: { transactionHash: tx.hash }
           });
 
@@ -225,16 +273,12 @@ async function monitorERC20Transfers(
             await prisma.inboxTransaction.create({
               data: {
                 walletId,
+                assetId: asset.id,
                 transactionHash: tx.hash,
                 blockNumber: tx.blockNumber,
-                tokenType: 'ERC20',
-                contractAddress: tx.contractAddress,
                 amount: tx.value,
                 fromAddress: tx.from,
                 toAddress: tx.to,
-                symbol: tx.tokenSymbol || 'UNKNOWN',
-                name: tx.tokenName || 'Unknown Token',
-                decimals: parseInt(tx.tokenDecimal || '18')
               }
             });
             console.log('ERC20 Transfer saved:', tx.hash);
@@ -277,8 +321,33 @@ async function monitorERC721Transfers(
       for (const tx of transactions) {
         // Only process incoming ERC721 transfers
         if (tx.to?.toLowerCase() === walletAddress.toLowerCase()) {
+          
+          // Check if ERC721 asset exists (unique by contract + tokenId)
+          let asset = await prisma.asset.findFirst({
+            where: { 
+              walletId: walletId,
+              tokenType: TokenType.ERC721,
+              contractAddress: tx.contractAddress,
+              tokenId: tx.tokenID
+            }
+          });
+
+          if (!asset) {
+            asset = await prisma.asset.create({
+              data: {
+                walletId: walletId,
+                tokenType: TokenType.ERC721,
+                contractAddress: tx.contractAddress,
+                tokenId: tx.tokenID,
+                symbol: tx.tokenSymbol || 'NFT',
+                name: tx.tokenName || 'Unknown NFT',
+                decimals: 0
+              }
+            });
+          }
+
           // Check if transaction already exists
-          const existingTx = await prisma.inboxTransaction?.findUnique({
+          const existingTx = await prisma.inboxTransaction.findUnique({
             where: { transactionHash: tx.hash }
           });
 
@@ -286,17 +355,12 @@ async function monitorERC721Transfers(
             await prisma.inboxTransaction.create({
               data: {
                 walletId,
+                assetId: asset.id,
                 transactionHash: tx.hash,
                 blockNumber: tx.blockNumber,
-                tokenType: 'ERC721',
-                contractAddress: tx.contractAddress,
-                tokenId: tx.tokenID,
                 amount: '1',
                 fromAddress: tx.from,
                 toAddress: tx.to,
-                symbol: tx.tokenSymbol || 'NFT',
-                name: tx.tokenName || 'Unknown NFT',
-                decimals: 0
               }
             });
             console.log('ERC721 Transfer saved:', tx.hash);
@@ -339,8 +403,33 @@ async function monitorERC1155Transfers(
       for (const tx of transactions) {
         // Only process incoming ERC1155 transfers
         if (tx.to?.toLowerCase() === walletAddress.toLowerCase()) {
+          
+          // Check if ERC1155 asset exists (unique by contract + tokenId)
+          let asset = await prisma.asset.findFirst({
+            where: { 
+              walletId: walletId,
+              tokenType: TokenType.ERC1155,
+              contractAddress: tx.contractAddress,
+              tokenId: tx.tokenID
+            }
+          });
+
+          if (!asset) {
+            asset = await prisma.asset.create({
+              data: {
+                walletId: walletId,
+                tokenType: TokenType.ERC1155,
+                contractAddress: tx.contractAddress,
+                tokenId: tx.tokenID,
+                symbol: tx.tokenSymbol || 'ERC1155',
+                name: tx.tokenName || 'ERC1155 Token',
+                decimals: 0
+              }
+            });
+          }
+
           // Check if transaction already exists
-          const existingTx = await prisma.inboxTransaction?.findUnique({
+          const existingTx = await prisma.inboxTransaction.findUnique({
             where: { transactionHash: tx.hash }
           });
 
@@ -348,17 +437,12 @@ async function monitorERC1155Transfers(
             await prisma.inboxTransaction.create({
               data: {
                 walletId,
+                assetId: asset.id,
                 transactionHash: tx.hash,
                 blockNumber: tx.blockNumber,
-                tokenType: 'ERC1155',
-                contractAddress: tx.contractAddress,
-                tokenId: tx.tokenID,
                 amount: tx.tokenValue || '0',
                 fromAddress: tx.from,
                 toAddress: tx.to,
-                symbol: tx.tokenSymbol || 'ERC1155',
-                name: tx.tokenName || 'ERC1155 Token',
-                decimals: 0
               }
             });
             console.log('ERC1155 Transfer saved:', tx.hash);
