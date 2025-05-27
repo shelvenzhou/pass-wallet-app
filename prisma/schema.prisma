@@ -28,9 +28,11 @@ model PassWallet {
   name      String
   owner     String   // General Signable Message Admin
   createdAt DateTime @default(now())
+
   signedMessages SignMessageHistory[]
   signDomainPermissions SignDomainPermission[]
   assets    Asset[]
+  subaccounts Subaccount[]
   inboxTransactions InboxTransaction[]
 }
 
@@ -45,19 +47,49 @@ model SignDomainPermission {
   @@unique([passAccountId, domainUrl, allowedSigner])
 }
 
-model Asset { // TODO: Redesign
-  id        Int      @id @default(autoincrement())
-  symbol    String
-  name      String
-  balance   String   // Store as string to handle big numbers
-  decimals  Int      @default(18)
-  contractAddress String?
-  wallet    PassWallet @relation(fields: [walletId], references: [id])
-  walletId  Int
-  updatedAt DateTime @updatedAt
-  createdAt DateTime @default(now())
+model Asset {
+  id              Int       @id @default(autoincrement())
+  walletId        Int
+  wallet          PassWallet @relation(fields: [walletId], references: [id])
 
-  @@unique([walletId, symbol])
+  tokenType       TokenType
+  contractAddress String?   // null for ETH
+  symbol          String
+  name            String
+  decimals        Int       @default(18)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  balances        SubaccountBalance[]
+
+  @@unique([walletId, tokenType, contractAddress])
+}
+
+model Subaccount {
+  id        Int       @id @default(autoincrement())
+  walletId  Int
+  wallet    PassWallet @relation(fields: [walletId], references: [id])
+
+  label     String
+  address   String     // Optional UI identifier
+  createdAt DateTime   @default(now())
+
+  balances  SubaccountBalance[]
+}
+
+model SubaccountBalance {
+  id           Int        @id @default(autoincrement())
+  subaccountId Int
+  assetId      Int
+
+  subaccount   Subaccount @relation(fields: [subaccountId], references: [id])
+  asset        Asset      @relation(fields: [assetId], references: [id])
+
+  amount       String     // Use string for safe precision
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([subaccountId, assetId])
 }
 
 
