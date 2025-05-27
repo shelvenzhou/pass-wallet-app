@@ -92,6 +92,7 @@ const AccountDetailsPage: NextPage = () => {
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
   const [isDomainTransferModalOpen, setIsDomainTransferModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'messages' | 'inbox'>('messages');
   const [accountDetails, setAccountDetails] = useState<{
     name: string;
     balance: string;
@@ -456,6 +457,24 @@ const AccountDetailsPage: NextPage = () => {
     marginRight: '12px',
   };
 
+  const tabStyle = {
+    padding: '12px 24px',
+    backgroundColor: 'transparent',
+    color: '#666',
+    border: 'none',
+    borderBottom: '2px solid transparent',
+    cursor: 'pointer',
+    fontSize: '16px',
+    fontWeight: '500',
+    marginRight: '12px',
+  };
+
+  const activeTabStyle = {
+    ...tabStyle,
+    color: '#0d76fc',
+    borderBottomColor: '#0d76fc',
+  };
+
   const inputStyle = {
     padding: '12px',
     fontSize: '16px',
@@ -593,145 +612,168 @@ const AccountDetailsPage: NextPage = () => {
                 )}
               </div>
               <div style={cardStyle}>
-                <h2>Message Signing History</h2>
-                {accountDetails.signedMessages.length === 0 ? (
-                  <p style={{ color: '#666' }}>No signed messages yet</p>
-                ) : (
-                  accountDetails.signedMessages.map((msg, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        padding: '16px',
-                        borderBottom: index < accountDetails.signedMessages.length - 1 ? '1px solid #eaeaea' : 'none',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <div style={{ fontWeight: '500' }}>{msg.domainUrl}</div>
-                        <div style={{ color: '#666', fontSize: '0.9rem' }}>
-                          {new Date(msg.createdAt).toLocaleString()}
-                        </div>
-                      </div>
-                      <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '8px' }}>
-                        Signer: {msg.signer}
-                      </div>
-                      <div style={{ 
-                        background: '#f5f5f5', 
-                        padding: '12px', 
-                        borderRadius: '6px',
-                        fontSize: '0.9rem',
-                        wordBreak: 'break-all'
-                      }}>
-                        <div style={{ marginBottom: '8px' }}>Message: {msg.message}</div>
-                        <div>Signature: {msg.signature.substring(0, 32)}...</div>
-                      </div>
-                      {msg.sessionId && (
-                        <div style={{ color: '#666', fontSize: '0.9rem', marginTop: '8px' }}>
-                          Session ID: {msg.sessionId}
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-            <div style={cardStyle}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h2>Inbox Transactions</h2>
-                <button
-                  style={{
-                    ...buttonStyle,
-                    backgroundColor: '#28a745',
-                    padding: '8px 16px'
-                  }}
-                  onClick={refreshInboxTransactions}
-                  disabled={isLoadingInbox}
-                >
-                  {isLoadingInbox ? 'Loading...' : 'Refresh Inbox'}
-                </button>
-              </div>
+                <div style={{ borderBottom: '1px solid #eaeaea', marginBottom: '20px' }}>
+                  <button
+                    style={activeTab === 'messages' ? activeTabStyle : tabStyle}
+                    onClick={() => setActiveTab('messages')}
+                  >
+                    Message Signing History
+                  </button>
+                  <button
+                    style={activeTab === 'inbox' ? activeTabStyle : tabStyle}
+                    onClick={() => setActiveTab('inbox')}
+                  >
+                    Inbox Transactions
+                  </button>
+                </div>
 
-              {isLoadingInbox ? (
-                <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>Loading transactions...</p>
-              ) : inboxTransactions.length === 0 ? (
-                <p style={{ color: '#666' }}>No incoming transactions yet</p>
-              ) : (
-                <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                  {inboxTransactions.map((tx, index) => (
-                    <div
-                      key={tx.hash}
+                {activeTab === 'inbox' && (
+                  <div style={{ marginBottom: '16px', textAlign: 'right' }}>
+                    <button
                       style={{
-                        padding: '16px',
-                        borderBottom: index < inboxTransactions.length - 1 ? '1px solid #eaeaea' : 'none',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-start'
+                        ...buttonStyle,
+                        backgroundColor: '#28a745',
+                        padding: '8px 16px',
+                        fontSize: '0.9rem'
                       }}
+                      onClick={refreshInboxTransactions}
+                      disabled={isLoadingInbox}
                     >
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
-                          <span
-                            style={{
-                              backgroundColor: getTokenTypeColor(tx.tokenType),
-                              color: 'white',
-                              padding: '4px 8px',
-                              borderRadius: '4px',
-                              fontSize: '0.8rem',
-                              fontWeight: '500',
-                              marginRight: '12px'
-                            }}
-                          >
-                            {tx.tokenType}
-                          </span>
-                          <div style={{ fontWeight: '500', fontSize: '1.1rem' }}>
-                            {formatAmount(tx.amount, tx.decimals, tx.symbol)}
-                          </div>
-                        </div>
-                        
-                        <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
-                          <strong>{tx.name}</strong>
-                          {tx.tokenId && ` (Token ID: ${tx.tokenId})`}
-                        </div>
-                        
-                        <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
-                          From: <span style={{ fontFamily: 'monospace' }}>{tx.fromAddress}</span>
-                        </div>
-                        
-                        <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
-                          Block: {tx.blockNumber}
-                        </div>
-                        
-                        {tx.contractAddress && (
-                          <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
-                            Contract: <span style={{ fontFamily: 'monospace' }}>{tx.contractAddress}</span>
-                          </div>
-                        )}
-                        
-                        <div style={{ color: '#666', fontSize: '0.8rem' }}>
-                          {new Date(tx.createdAt).toLocaleString()}
-                        </div>
-                      </div>
-                      
-                      <div style={{ marginLeft: '16px' }}>
-                        <a
-                          href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      {isLoadingInbox ? 'Loading...' : 'Refresh Inbox'}
+                    </button>
+                  </div>
+                )}
+
+                {activeTab === 'messages' && (
+                  <div>
+                    {accountDetails.signedMessages.length === 0 ? (
+                      <p style={{ color: '#666' }}>No signed messages yet</p>
+                    ) : (
+                      accountDetails.signedMessages.map((msg, index) => (
+                        <div
+                          key={index}
                           style={{
-                            ...buttonStyle,
-                            backgroundColor: '#6c757d',
-                            padding: '8px 12px',
-                            fontSize: '0.9rem',
-                            textDecoration: 'none',
-                            display: 'inline-block'
+                            padding: '16px',
+                            borderBottom: index < accountDetails.signedMessages.length - 1 ? '1px solid #eaeaea' : 'none',
                           }}
                         >
-                          View on Etherscan
-                        </a>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <div style={{ fontWeight: '500' }}>{msg.domainUrl}</div>
+                            <div style={{ color: '#666', fontSize: '0.9rem' }}>
+                              {new Date(msg.createdAt).toLocaleString()}
+                            </div>
+                          </div>
+                          <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '8px' }}>
+                            Signer: {msg.signer}
+                          </div>
+                          <div style={{ 
+                            background: '#f5f5f5', 
+                            padding: '12px', 
+                            borderRadius: '6px',
+                            fontSize: '0.9rem',
+                            wordBreak: 'break-all'
+                          }}>
+                            <div style={{ marginBottom: '8px' }}>Message: {msg.message}</div>
+                            <div>Signature: {msg.signature.substring(0, 32)}...</div>
+                          </div>
+                          {msg.sessionId && (
+                            <div style={{ color: '#666', fontSize: '0.9rem', marginTop: '8px' }}>
+                              Session ID: {msg.sessionId}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'inbox' && (
+                  <div>
+                    {isLoadingInbox ? (
+                      <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>Loading transactions...</p>
+                    ) : inboxTransactions.length === 0 ? (
+                      <p style={{ color: '#666' }}>No incoming transactions yet</p>
+                    ) : (
+                      <div style={{ overflowY: 'auto', maxHeight: '1200px' }}>
+                        {inboxTransactions.map((tx, index) => (
+                          <div
+                            key={tx.hash}
+                            style={{
+                              padding: '16px',
+                              borderBottom: index < inboxTransactions.length - 1 ? '1px solid #eaeaea' : 'none',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'flex-start'
+                            }}
+                          >
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                                <span
+                                  style={{
+                                    backgroundColor: getTokenTypeColor(tx.tokenType),
+                                    color: 'white',
+                                    padding: '4px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '500',
+                                    marginRight: '12px'
+                                  }}
+                                >
+                                  {tx.tokenType}
+                                </span>
+                                <div style={{ fontWeight: '500', fontSize: '1.1rem' }}>
+                                  {formatAmount(tx.amount, tx.decimals, tx.symbol)}
+                                </div>
+                              </div>
+                              
+                              <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                <strong>{tx.name}</strong>
+                                {tx.tokenId && ` (Token ID: ${tx.tokenId})`}
+                              </div>
+                              
+                              <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                From: <span style={{ fontFamily: 'monospace' }}>{tx.fromAddress}</span>
+                              </div>
+                              
+                              <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                Block: {tx.blockNumber}
+                              </div>
+                              
+                              {tx.contractAddress && (
+                                <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                  Contract: <span style={{ fontFamily: 'monospace' }}>{tx.contractAddress}</span>
+                                </div>
+                              )}
+                              
+                              <div style={{ color: '#666', fontSize: '0.8rem' }}>
+                                {new Date(tx.createdAt).toLocaleString()}
+                              </div>
+                            </div>
+                            
+                            <div style={{ marginLeft: '16px' }}>
+                              <a
+                                href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  ...buttonStyle,
+                                  backgroundColor: '#6c757d',
+                                  padding: '8px 12px',
+                                  fontSize: '0.9rem',
+                                  textDecoration: 'none',
+                                  display: 'inline-block'
+                                }}
+                              >
+                                View on Etherscan
+                              </a>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </>
         ) : (
