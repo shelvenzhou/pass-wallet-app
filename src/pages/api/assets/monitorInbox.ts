@@ -2,17 +2,14 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '../../../lib/prisma';
 
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || '';
-const ETHERSCAN_BASE = 'https://api-sepolia.etherscan.io/api'; // change to mainnet if needed
+const ETHERSCAN_BASE = 'https://api.etherscan.io/v2/api';
+const CHAIN_ID = 11155111; // Sepolia Testnet
 
 interface MonitorResult {
   wallet: string;
   fromBlock: string;
   toBlock: string;
-  newTransactions: number;
-  ethTransactions: number;
-  erc20Transactions: number;
-  erc721Transactions: number;
-  erc1155Transactions: number;
+  transactions: EtherscanTransaction[];
 }
 
 interface EtherscanTransaction {
@@ -22,6 +19,7 @@ interface EtherscanTransaction {
   to: string;
   value: string;
   contractAddress?: string;
+  tokenType: string;
   tokenName?: string;
   tokenSymbol?: string;
   tokenDecimal?: string;
@@ -54,6 +52,7 @@ export default async function handler(
 
     // Get current block number
     const currentBlockUrl = new URL(ETHERSCAN_BASE);
+    currentBlockUrl.searchParams.set('chainid', CHAIN_ID.toString());
     currentBlockUrl.searchParams.set('module', 'proxy');
     currentBlockUrl.searchParams.set('action', 'eth_blockNumber');
     currentBlockUrl.searchParams.set('apikey', ETHERSCAN_API_KEY);
@@ -88,15 +87,29 @@ export default async function handler(
     erc1155Transactions = erc1155Txs;
     newTransactions += erc1155Txs;
 
+    // Get all transactions from database by most recent
+    const transactions = await prisma.inboxTransaction.findMany({
+      where: { walletId: passWallet.id },
+      orderBy: { createdAt: 'desc' }
+    });
+
     return res.status(200).json({
       wallet,
       fromBlock,
       toBlock: currentBlock,
-      newTransactions,
-      ethTransactions,
-      erc20Transactions,
-      erc721Transactions,
-      erc1155Transactions
+      transactions: transactions.map(tx => ({
+        hash: tx.transactionHash,
+        tokenType: tx.tokenType,
+        blockNumber: tx.blockNumber,
+        from: tx.fromAddress,
+        to: tx.toAddress,
+        value: tx.amount,
+        contractAddress: tx.contractAddress || undefined,
+        tokenName: tx.name,
+        tokenSymbol: tx.symbol,
+        tokenDecimal: tx.decimals.toString(),
+        tokenID: tx.tokenId?.toString() || undefined
+      }))
     });
 
   } catch (error) {
@@ -117,6 +130,7 @@ async function monitorEthTransfers(
 
   try {
     const url = new URL(ETHERSCAN_BASE);
+    url.searchParams.set('chainid', CHAIN_ID.toString());
     url.searchParams.set('module', 'account');
     url.searchParams.set('action', 'txlist');
     url.searchParams.set('address', walletAddress);
@@ -138,23 +152,28 @@ async function monitorEthTransfers(
           tx.isError === '0'
         ) {
           // Check if transaction already exists
-          const existingTx = false;
+          const existingTx = await prisma.inboxTransaction.findUnique({
+            where: { transactionHash: tx.hash }
+          });
 
           if (!existingTx) {
-            const data = {
-              walletId,
-              transactionHash: tx.hash,
-              blockNumber: tx.blockNumber,
-              tokenType: 'ETH',
-              amount: tx.value,
-              fromAddress: tx.from,
-              toAddress: tx.to,
-              symbol: 'ETH',
-              name: 'Ethereum',
-              decimals: 18
-            };
-            console.log('ETH Transfer:', data);
+            await prisma.inboxTransaction.create({
+              data: {
+                walletId,
+                transactionHash: tx.hash,
+                blockNumber: tx.blockNumber,
+                tokenType: 'ETH',
+                amount: tx.value,
+                fromAddress: tx.from,
+                toAddress: tx.to,
+                symbol: 'ETH',
+                name: 'Ethereum',
+                decimals: 18
+              }
+            });
+            console.log('ETH Transfer saved:', tx.hash);
             newTransactions++;
+
           }
         }
       }
@@ -176,6 +195,7 @@ async function monitorERC20Transfers(
 
   try {
     const url = new URL(ETHERSCAN_BASE);
+    url.searchParams.set('chainid', CHAIN_ID.toString());
     url.searchParams.set('module', 'account');
     url.searchParams.set('action', 'tokentx');
     url.searchParams.set('address', walletAddress);
@@ -197,23 +217,27 @@ async function monitorERC20Transfers(
         // Only process incoming ERC20 transfers
         if (tx.to?.toLowerCase() === walletAddress.toLowerCase()) {
           // Check if transaction already exists
-          const existingTx = false;
+          const existingTx = await prisma.inboxTransaction?.findUnique({
+            where: { transactionHash: tx.hash }
+          });
 
           if (!existingTx) {
-            const data = {
-              walletId,
-              transactionHash: tx.hash,
-              blockNumber: tx.blockNumber,
-              tokenType: 'ERC20',
-              contractAddress: tx.contractAddress,
-              amount: tx.value,
-              fromAddress: tx.from,
-              toAddress: tx.to,
-              symbol: tx.tokenSymbol || 'UNKNOWN',
-              name: tx.tokenName || 'Unknown Token',
-              decimals: parseInt(tx.tokenDecimal || '18')
-            };
-            console.log('ERC20 Transfer:', data);
+            await prisma.inboxTransaction.create({
+              data: {
+                walletId,
+                transactionHash: tx.hash,
+                blockNumber: tx.blockNumber,
+                tokenType: 'ERC20',
+                contractAddress: tx.contractAddress,
+                amount: tx.value,
+                fromAddress: tx.from,
+                toAddress: tx.to,
+                symbol: tx.tokenSymbol || 'UNKNOWN',
+                name: tx.tokenName || 'Unknown Token',
+                decimals: parseInt(tx.tokenDecimal || '18')
+              }
+            });
+            console.log('ERC20 Transfer saved:', tx.hash);
             newTransactions++;
           }
         }
@@ -236,6 +260,7 @@ async function monitorERC721Transfers(
 
   try {
     const url = new URL(ETHERSCAN_BASE);
+    url.searchParams.set('chainid', CHAIN_ID.toString());
     url.searchParams.set('module', 'account');
     url.searchParams.set('action', 'tokennfttx');
     url.searchParams.set('address', walletAddress);
@@ -253,23 +278,28 @@ async function monitorERC721Transfers(
         // Only process incoming ERC721 transfers
         if (tx.to?.toLowerCase() === walletAddress.toLowerCase()) {
           // Check if transaction already exists
-          const existingTx = false;
+          const existingTx = await prisma.inboxTransaction?.findUnique({
+            where: { transactionHash: tx.hash }
+          });
 
           if (!existingTx) {
-            const data = {
-              walletId,
-              transactionHash: tx.hash,
-              blockNumber: tx.blockNumber,
-              tokenType: 'ERC721',
-              contractAddress: tx.contractAddress,
-              tokenId: tx.tokenID,
-              amount: '1',
-              fromAddress: tx.from,
-              toAddress: tx.to,
-              symbol: tx.tokenSymbol || 'NFT',
-              name: tx.tokenName || 'Unknown NFT'
-            };
-            console.log('ERC721 Transfer:', data);
+            await prisma.inboxTransaction.create({
+              data: {
+                walletId,
+                transactionHash: tx.hash,
+                blockNumber: tx.blockNumber,
+                tokenType: 'ERC721',
+                contractAddress: tx.contractAddress,
+                tokenId: tx.tokenID,
+                amount: '1',
+                fromAddress: tx.from,
+                toAddress: tx.to,
+                symbol: tx.tokenSymbol || 'NFT',
+                name: tx.tokenName || 'Unknown NFT',
+                decimals: 0
+              }
+            });
+            console.log('ERC721 Transfer saved:', tx.hash);
             newTransactions++;
           }
         }
@@ -292,6 +322,7 @@ async function monitorERC1155Transfers(
 
   try {
     const url = new URL(ETHERSCAN_BASE);
+    url.searchParams.set('chainid', CHAIN_ID.toString());
     url.searchParams.set('module', 'account');
     url.searchParams.set('action', 'token1155tx');
     url.searchParams.set('address', walletAddress);
@@ -309,23 +340,28 @@ async function monitorERC1155Transfers(
         // Only process incoming ERC1155 transfers
         if (tx.to?.toLowerCase() === walletAddress.toLowerCase()) {
           // Check if transaction already exists
-          const existingTx = false;
+          const existingTx = await prisma.inboxTransaction?.findUnique({
+            where: { transactionHash: tx.hash }
+          });
 
           if (!existingTx) {
-            const data = {
-              walletId,
-              transactionHash: tx.hash,
-              blockNumber: tx.blockNumber,
-              tokenType: 'ERC1155',
-              contractAddress: tx.contractAddress,
-              tokenId: tx.tokenID,
-              amount: tx.tokenValue || '0',
-              fromAddress: tx.from,
-              toAddress: tx.to,
-              symbol: tx.tokenSymbol || 'ERC1155',
-              name: tx.tokenName || 'ERC1155 Token'
-            };
-            console.log('ERC1155 Transfer:', data);
+            await prisma.inboxTransaction.create({
+              data: {
+                walletId,
+                transactionHash: tx.hash,
+                blockNumber: tx.blockNumber,
+                tokenType: 'ERC1155',
+                contractAddress: tx.contractAddress,
+                tokenId: tx.tokenID,
+                amount: tx.tokenValue || '0',
+                fromAddress: tx.from,
+                toAddress: tx.to,
+                symbol: tx.tokenSymbol || 'ERC1155',
+                name: tx.tokenName || 'ERC1155 Token',
+                decimals: 0
+              }
+            });
+            console.log('ERC1155 Transfer saved:', tx.hash);
             newTransactions++;
           }
         }

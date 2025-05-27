@@ -43,6 +43,47 @@ interface SignedMessage {
   createdAt: string;
 }
 
+interface InboxTransaction {
+  hash: string;
+  blockNumber: string;
+  tokenType: 'ETH' | 'ERC20' | 'ERC721' | 'ERC1155';
+  amount: string;
+  fromAddress: string;
+  toAddress: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  contractAddress?: string;
+  tokenId?: string;
+  createdAt: string;
+}
+
+// Add these helper functions before the component
+const getTokenTypeColor = (tokenType: string) => {
+  switch (tokenType) {
+    case 'ETH':
+      return '#627eea';
+    case 'ERC20':
+      return '#f7931a';
+    case 'ERC721':
+      return '#9c27b0';
+    case 'ERC1155':
+      return '#4caf50';
+    default:
+      return '#666';
+  }
+};
+
+const formatAmount = (amount: string, decimals: number, symbol: string) => {
+  if (decimals === 0) {
+    return `${amount} ${symbol}`;
+  }
+  
+  const divisor = Math.pow(10, decimals);
+  const formattedAmount = (parseFloat(amount) / divisor).toFixed(6);
+  return `${formattedAmount} ${symbol}`;
+};
+
 const AccountDetailsPage: NextPage = () => {
   const router = useRouter();
   const { address: accountAddress } = router.query;
@@ -65,6 +106,8 @@ const AccountDetailsPage: NextPage = () => {
   const [walletKit, setWalletKit] = useState<IWalletKit | null>(null);
   const [messageRequest, setMessageRequest] = useState<MessageRequest | null>(null);
   const [activeSessions, setActiveSessions] = useState<any[]>([]);
+  const [inboxTransactions, setInboxTransactions] = useState<InboxTransaction[]>([]);
+  const [isLoadingInbox, setIsLoadingInbox] = useState(false);
 
   const handleApproveProposal = async () => {
     console.log("Approve proposal");
@@ -292,6 +335,105 @@ const AccountDetailsPage: NextPage = () => {
     // console.log(walletKit?.getActiveSessions());
   }, []);
 
+  // Update the fetchInboxTransactions function
+  useEffect(() => {
+    const fetchInboxTransactions = async () => {
+      if (!accountAddress) return;
+      
+      try {
+        setIsLoadingInbox(true);
+        const response = await fetch('/api/assets/monitorInbox', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            wallet: accountAddress,
+            fromBlock: '0'
+          }),
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          // Map the API response to InboxTransaction format
+          const mappedTransactions: InboxTransaction[] = data.transactions.map((tx: any) => ({
+            hash: tx.hash,
+            blockNumber: tx.blockNumber,
+            tokenType: tx.tokenType || 'ETH',
+            amount: tx.value,
+            fromAddress: tx.from,
+            toAddress: tx.to,
+            symbol: tx.tokenSymbol || 'ETH',
+            name: tx.tokenName || 'Ethereum',
+            decimals: parseInt(tx.tokenDecimal || '18'),
+            contractAddress: tx.contractAddress,
+            tokenId: tx.tokenID,
+            createdAt: new Date().toISOString() // API doesn't return this, so use current time
+          }));
+          
+          setInboxTransactions(mappedTransactions);
+        } else {
+          console.error('Failed to monitor inbox:', data);
+        }
+      } catch (error) {
+        console.error('Error monitoring inbox:', error);
+      } finally {
+        setIsLoadingInbox(false);
+      }
+    };
+
+    fetchInboxTransactions();
+  }, [accountAddress]);
+
+  const refreshInboxTransactions = async () => {
+    if (!accountAddress) return;
+    
+    try {
+      setIsLoadingInbox(true);
+      const response = await fetch('/api/assets/monitorInbox', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wallet: accountAddress,
+          fromBlock: '0'
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Map the API response to InboxTransaction format
+        const mappedTransactions: InboxTransaction[] = data.transactions.map((tx: any) => ({
+          hash: tx.hash,
+          blockNumber: tx.blockNumber,
+          tokenType: tx.tokenType || 'ETH',
+          amount: tx.value,
+          fromAddress: tx.from,
+          toAddress: tx.to,
+          symbol: tx.tokenSymbol || 'ETH',
+          name: tx.tokenName || 'Ethereum',
+          decimals: parseInt(tx.tokenDecimal || '18'),
+          contractAddress: tx.contractAddress,
+          tokenId: tx.tokenID,
+          createdAt: new Date().toISOString()
+        }));
+        
+        setInboxTransactions(mappedTransactions);
+        toast.success('Inbox refreshed successfully');
+      } else {
+        toast.error('Failed to monitor inbox');
+      }
+    } catch (error) {
+      console.error('Error refreshing inbox transactions:', error);
+      toast.error('Error refreshing inbox transactions');
+    } finally {
+      setIsLoadingInbox(false);
+    }
+  };
+
   const cardStyle = {
     padding: '24px',
     border: '1px solid #eaeaea',
@@ -492,31 +634,105 @@ const AccountDetailsPage: NextPage = () => {
                 )}
               </div>
             </div>
-            <TransferModal
-              isOpen={isTransferModalOpen}
-              onClose={() => setIsTransferModalOpen(false)}
-              assets={accountDetails.assets}
-            />
-            <MessageModal
-              isOpen={isMessageModalOpen}
-              onClose={() => setIsMessageModalOpen(false)}
-              onSign={handleApproveSignRequest}
-              onReject={handleRejectRequest}
-              messageRequest={messageRequest || undefined}
-            />
-            <MessageModal
-              isOpen={isProposalModalOpen}
-              onClose={() => setIsProposalModalOpen(false)}
-              onSign={handleApproveProposal}
-              onReject={handleRejectProposal}
-              messageRequest={messageRequest || undefined}
-            />
-            <DomainTransferModal
-              isOpen={isDomainTransferModalOpen}
-              onClose={() => setIsDomainTransferModalOpen(false)}
-              account={accountAddress as string}
-              fromAddress={connectedAddress as string}
-            />
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h2>Inbox Transactions</h2>
+                <button
+                  style={{
+                    ...buttonStyle,
+                    backgroundColor: '#28a745',
+                    padding: '8px 16px'
+                  }}
+                  onClick={refreshInboxTransactions}
+                  disabled={isLoadingInbox}
+                >
+                  {isLoadingInbox ? 'Loading...' : 'Refresh Inbox'}
+                </button>
+              </div>
+
+              {isLoadingInbox ? (
+                <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>Loading transactions...</p>
+              ) : inboxTransactions.length === 0 ? (
+                <p style={{ color: '#666' }}>No incoming transactions yet</p>
+              ) : (
+                <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                  {inboxTransactions.map((tx, index) => (
+                    <div
+                      key={tx.hash}
+                      style={{
+                        padding: '16px',
+                        borderBottom: index < inboxTransactions.length - 1 ? '1px solid #eaeaea' : 'none',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start'
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                          <span
+                            style={{
+                              backgroundColor: getTokenTypeColor(tx.tokenType),
+                              color: 'white',
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.8rem',
+                              fontWeight: '500',
+                              marginRight: '12px'
+                            }}
+                          >
+                            {tx.tokenType}
+                          </span>
+                          <div style={{ fontWeight: '500', fontSize: '1.1rem' }}>
+                            {formatAmount(tx.amount, tx.decimals, tx.symbol)}
+                          </div>
+                        </div>
+                        
+                        <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                          <strong>{tx.name}</strong>
+                          {tx.tokenId && ` (Token ID: ${tx.tokenId})`}
+                        </div>
+                        
+                        <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                          From: <span style={{ fontFamily: 'monospace' }}>{tx.fromAddress}</span>
+                        </div>
+                        
+                        <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                          Block: {tx.blockNumber}
+                        </div>
+                        
+                        {tx.contractAddress && (
+                          <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                            Contract: <span style={{ fontFamily: 'monospace' }}>{tx.contractAddress}</span>
+                          </div>
+                        )}
+                        
+                        <div style={{ color: '#666', fontSize: '0.8rem' }}>
+                          {new Date(tx.createdAt).toLocaleString()}
+                        </div>
+                      </div>
+                      
+                      <div style={{ marginLeft: '16px' }}>
+                        <a
+                          href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            ...buttonStyle,
+                            backgroundColor: '#6c757d',
+                            padding: '8px 12px',
+                            fontSize: '0.9rem',
+                            textDecoration: 'none',
+                            display: 'inline-block'
+                          }}
+                        >
+                          View on Etherscan
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </>
         ) : (
           <div className={styles.errorContainer}>

@@ -31,6 +31,7 @@ model PassWallet {
   signedMessages SignMessageHistory[]
   signDomainPermissions SignDomainPermission[]
   assets    Asset[]
+  inboxTransactions InboxTransaction[]
 }
 
 model SignDomainPermission {
@@ -44,7 +45,7 @@ model SignDomainPermission {
   @@unique([passAccountId, domainUrl, allowedSigner])
 }
 
-model Asset {
+model Asset { // TODO: Redesign
   id        Int      @id @default(autoincrement())
   symbol    String
   name      String
@@ -57,4 +58,36 @@ model Asset {
   createdAt DateTime @default(now())
 
   @@unique([walletId, symbol])
+}
+
+
+model InboxTransaction {
+  id               Int         @id @default(autoincrement())
+  wallet           PassWallet  @relation(fields: [walletId], references: [id])
+  walletId         Int
+
+  transactionHash  String      @unique
+  blockNumber      String
+  tokenType        TokenType
+  contractAddress  String?     // For ERC20/721/1155
+  tokenId          String?     // For NFTs
+  amount           String
+  fromAddress      String
+  toAddress        String
+
+  symbol           String
+  name             String
+  decimals         Int         @default(18)
+
+  claimed          Boolean     @default(false)
+  claimedAt        DateTime?
+
+  createdAt        DateTime    @default(now())
+}
+
+enum TokenType {
+  ETH
+  ERC20
+  ERC721
+  ERC1155
 }

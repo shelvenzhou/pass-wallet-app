@@ -35,20 +35,32 @@ export default async function handler(
   const { address } = req.query;
 
   try {
+    // Fetch ETH balance from Etherscan API
+    const etherscanResponse = await fetch(
+      `https://api.etherscan.io/v2/api?chainid=11155111&module=account&action=balance&address=${address}&tag=latest&apikey=${process.env.ETHERSCAN_API_KEY || ''}`
+    );
+    
+    const etherscanData = await etherscanResponse.json();
+    
+    // Convert from wei to ETH (divide by 10^18)
+    const ethBalance = etherscanData.status === '1' 
+      ? (parseInt(etherscanData.result) / Math.pow(10, 18)).toFixed(4)
+      : '0.0000';
+
     // Fetch wallet data from database
     const wallet = await prisma.passWallet.findUnique({
       where: {
         address: address as string,
       },
       include: {
-        signedMessages: true, // Include the signing history
+        signedMessages: true,
       },
     });
 
     if (!wallet) {
       return res.status(404).json({
         name: 'Unknown Account',
-        balance: '0 ETH',
+        balance: `${ethBalance} ETH`,
         owner: address as string,
         assets: [],
         transactions: [],
@@ -58,7 +70,7 @@ export default async function handler(
 
     const accountData: AccountData = {
       name: wallet.name,
-      balance: '0.0 ETH', // Mock data
+      balance: `${ethBalance} ETH`,
       owner: wallet.owner,
       assets: [
         {
