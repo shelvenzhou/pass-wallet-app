@@ -1104,6 +1104,26 @@ const AccountDetailsPage: NextPage = () => {
           </div>
         )}
       </main>
+
+      <DomainTransferModal
+        isOpen={isDomainTransferModalOpen}
+        onClose={() => setIsDomainTransferModalOpen(false)}
+        account={accountAddress as string}
+        fromAddress={connectedAddress as string}
+      />
+
+      <TransferModal
+        isOpen={isTransferModalOpen}
+        onClose={() => setIsTransferModalOpen(false)}
+      />
+
+      <MessageModal
+        isOpen={isMessageModalOpen}
+        onClose={() => setIsMessageModalOpen(false)}
+        messageRequest={messageRequest as MessageRequest}
+        onSign={handleApproveSignRequest}
+        onReject={handleRejectRequest}
+      />
     </div>
   );
 };

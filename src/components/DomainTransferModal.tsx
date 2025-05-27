@@ -10,7 +10,7 @@ interface DomainTransferModalProps {
 
 const DomainTransferModal = ({ isOpen, onClose, account, fromAddress }: DomainTransferModalProps) => {
   const [newOwner, setNewOwner] = useState('');
-  const [domainUrl, setDomainUrl] = useState('https://www.tally.xyz'); // Example domain name
+  const [domainUrl, setDomainUrl] = useState('https://'); // Example domain name
   const [isLoading, setIsLoading] = useState(false);
 
   if (!isOpen) return null;
