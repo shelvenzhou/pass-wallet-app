@@ -5,7 +5,6 @@ import os
 from dotenv import load_dotenv
 from eth_account.messages import encode_defunct
 
-# Load environment variables from .env file
 load_dotenv()
 
 # File for storing encrypted keys
