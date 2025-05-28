@@ -447,6 +447,27 @@ const AccountDetailsPage: NextPage = () => {
     }
   };
 
+  const handleClaim = async (hash: string) => {
+    const response = await fetch('/api/assets/claim', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        walletAddress: accountAddress,
+        transactionHash: hash,
+        claimAddress: connectedAddress
+      }),
+    });
+    if (response.ok) {
+      toast.success('Claimed successfully');
+    } else {
+      const errorData = await response.json();
+      toast.error(`Failed to claim: ${errorData.error || 'Unknown error'}`);
+    }
+  };
+  
+
   const cardStyle = {
     padding: '24px',
     border: '1px solid #eaeaea',
@@ -1076,7 +1097,7 @@ const AccountDetailsPage: NextPage = () => {
                               </div>
                             </div>
                             
-                            <div style={{ marginLeft: '16px' }}>
+                            <div style={{ marginLeft: '16px', display: 'flex', gap: '8px' }}>
                               <a
                                 href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
                                 target="_blank"
@@ -1092,6 +1113,20 @@ const AccountDetailsPage: NextPage = () => {
                               >
                                 View on Etherscan
                               </a>
+                              <button
+                                onClick={() => handleClaim(tx.hash)}
+                                style={{
+                                  ...buttonStyle,
+                                  backgroundColor: '#007bff',
+                                  padding: '8px 12px',
+                                  fontSize: '0.9rem',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  color: 'white'
+                                }}
+                              >
+                                Claim
+                              </button>
                             </div>
                           </div>
                         ))}
