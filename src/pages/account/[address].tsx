@@ -68,6 +68,7 @@ interface InboxTransaction {
   contractAddress?: string;
   tokenId?: string;
   createdAt: string;
+  claimed: boolean;
 }
 
 // Add these helper functions before the component
@@ -382,7 +383,8 @@ const AccountDetailsPage: NextPage = () => {
             decimals: parseInt(tx.tokenDecimal || '18'),
             contractAddress: tx.contractAddress,
             tokenId: tx.tokenID,
-            createdAt: new Date().toISOString() // API doesn't return this, so use current time
+            createdAt: new Date().toISOString(), // API doesn't return this, so use current time
+            claimed: tx.claimed || false
           }));
           
           setInboxTransactions(mappedTransactions);
@@ -431,7 +433,8 @@ const AccountDetailsPage: NextPage = () => {
           decimals: parseInt(tx.tokenDecimal || '18'),
           contractAddress: tx.contractAddress,
           tokenId: tx.tokenID,
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          claimed: tx.claimed || false
         }));
         
         setInboxTransactions(mappedTransactions);
@@ -1038,16 +1041,18 @@ const AccountDetailsPage: NextPage = () => {
                   <div>
                     {isLoadingInbox ? (
                       <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>Loading transactions...</p>
-                    ) : inboxTransactions.length === 0 ? (
-                      <p style={{ color: '#666' }}>No incoming transactions yet</p>
+                    ) : inboxTransactions.filter(tx => tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()).length === 0 ? (
+                      <p style={{ color: '#666' }}>No incoming transactions from your connected wallet yet</p>
                     ) : (
                       <div style={{ overflowY: 'auto', maxHeight: '1200px' }}>
-                        {inboxTransactions.map((tx, index) => (
+                        {inboxTransactions
+                          .filter(tx => tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase())
+                          .map((tx, index) => (
                           <div
                             key={tx.hash}
                             style={{
                               padding: '16px',
-                              borderBottom: index < inboxTransactions.length - 1 ? '1px solid #eaeaea' : 'none',
+                              borderBottom: index < inboxTransactions.filter(tx => tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()).length - 1 ? '1px solid #eaeaea' : 'none',
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'flex-start'
@@ -1115,17 +1120,19 @@ const AccountDetailsPage: NextPage = () => {
                               </a>
                               <button
                                 onClick={() => handleClaim(tx.hash)}
+                                disabled={tx.claimed}
                                 style={{
                                   ...buttonStyle,
-                                  backgroundColor: '#007bff',
+                                  backgroundColor: tx.claimed ? '#6c757d' : '#007bff',
                                   padding: '8px 12px',
                                   fontSize: '0.9rem',
                                   border: 'none',
-                                  cursor: 'pointer',
-                                  color: 'white'
+                                  cursor: tx.claimed ? 'not-allowed' : 'pointer',
+                                  color: 'white',
+                                  opacity: tx.claimed ? 0.6 : 1
                                 }}
                               >
-                                Claim
+                                {tx.claimed ? 'Claimed' : 'Claim'}
                               </button>
                             </div>
                           </div>

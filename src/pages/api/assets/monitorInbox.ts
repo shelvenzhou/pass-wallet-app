@@ -116,7 +116,8 @@ export default async function handler(
         tokenName: tx.asset?.name,
         tokenSymbol: tx.asset?.symbol,
         tokenDecimal: tx.asset?.decimals.toString() || '18',
-        tokenID: tx.asset?.tokenId?.toString() || undefined
+        tokenID: tx.asset?.tokenId?.toString() || undefined,
+        claimed: tx.claimed
       }))
     });
 
