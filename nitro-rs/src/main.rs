@@ -3,7 +3,8 @@ use std::collections::HashMap;
 // use std::fs;
 // use std::path::Path;
 use anyhow::{Result, anyhow};
-use secp256k1::{Secp256k1, SecretKey, PublicKey, Message, All};
+use k256::{SecretKey, PublicKey, ecdsa::{SigningKey, VerifyingKey, Signature, RecoveryId}};
+use k256::elliptic_curve::sec1::ToEncodedPoint;
 use rand::RngCore;
 use sha3::{Keccak256, Digest};
 use aes_gcm::{Aes256Gcm, Key, Nonce, aead::Aead, KeyInit};
@@ -25,7 +26,6 @@ struct EthereumAccount {
 
 struct EnclaveKMS {
     secret: [u8; 32],
-    secp: Secp256k1<All>,
     keystore: HashMap<String, EncryptedKey>,
 }
 
@@ -37,7 +37,6 @@ impl EnclaveKMS {
         
         Ok(EnclaveKMS {
             secret: secret_bytes,
-            secp: Secp256k1::new(),
             keystore: HashMap::new(),
         })
     }
@@ -47,8 +46,8 @@ impl EnclaveKMS {
         let mut private_key_bytes = [0u8; 32];
         rng.fill_bytes(&mut private_key_bytes);
         
-        let secret_key = SecretKey::from_slice(&private_key_bytes)?;
-        let public_key = PublicKey::from_secret_key(&self.secp, &secret_key);
+        let secret_key = SecretKey::from_bytes(&private_key_bytes.into())?;
+        let public_key = secret_key.public_key();
         
         let address = self.public_key_to_address(&public_key);
         let private_key = format!("0x{}", hex::encode(private_key_bytes));
@@ -60,9 +59,10 @@ impl EnclaveKMS {
     }
 
     fn public_key_to_address(&self, public_key: &PublicKey) -> String {
-        let public_key_bytes = public_key.serialize_uncompressed();
+        let public_key_bytes = public_key.to_encoded_point(false);
+        let public_key_slice = public_key_bytes.as_bytes();
         // Skip the first byte (0x04) for uncompressed format
-        let hash = Keccak256::digest(&public_key_bytes[1..]);
+        let hash = Keccak256::digest(&public_key_slice[1..]);
         // Take the last 20 bytes and format as hex with 0x prefix
         format!("0x{}", hex::encode(&hash[12..]))
     }
@@ -128,19 +128,24 @@ impl EnclaveKMS {
         
         let private_key_clean = private_key_hex.strip_prefix("0x").unwrap_or(&private_key_hex);
         let private_key_bytes = hex::decode(private_key_clean)?;
-        let secret_key = SecretKey::from_slice(&private_key_bytes)?;
+        
+        // Convert Vec<u8> to [u8; 32] array
+        let private_key_array: [u8; 32] = private_key_bytes.try_into()
+            .map_err(|_| anyhow!("Invalid private key length"))?;
+        
+        let secret_key = SecretKey::from_bytes(&private_key_array.into())?;
+        let signing_key = SigningKey::from(secret_key);
         
         // Create EIP-191 message hash
         let message_hash = self.hash_message(message);
-        let message_obj = Message::from_digest_slice(&message_hash)?;
         
-        let signature = self.secp.sign_ecdsa_recoverable(&message_obj, &secret_key);
+        let (signature, recovery_id) = signing_key.sign_prehash_recoverable(&message_hash)?;
         
         // Convert to Ethereum signature format (r, s, v)
-        let (recovery_id, signature_bytes) = signature.serialize_compact();
+        let signature_bytes = signature.to_bytes();
         let mut eth_signature = [0u8; 65];
         eth_signature[..64].copy_from_slice(&signature_bytes);
-        eth_signature[64] = recovery_id.to_i32() as u8 + 27; // Ethereum v value
+        eth_signature[64] = recovery_id.to_byte() + 27; // Ethereum v value
         
         Ok(Some(format!("0x{}", hex::encode(eth_signature))))
     }
@@ -161,16 +166,19 @@ impl EnclaveKMS {
             return Ok(false);
         }
         
-        let recovery_id = secp256k1::ecdsa::RecoveryId::from_i32((signature_bytes[64] - 27) as i32)?;
-        let signature = secp256k1::ecdsa::RecoverableSignature::from_compact(
-            &signature_bytes[..64],
-            recovery_id,
-        )?;
+        let recovery_id = RecoveryId::from_byte(signature_bytes[64] - 27)
+            .ok_or_else(|| anyhow!("Invalid recovery ID"))?;
+        
+        // Convert &[u8] to [u8; 64] array
+        let signature_array: [u8; 64] = signature_bytes[..64].try_into()
+            .map_err(|_| anyhow!("Invalid signature length"))?;
+        
+        let signature = Signature::from_bytes(&signature_array.into())?;
         
         let message_hash = self.hash_message(message);
-        let message_obj = Message::from_digest_slice(&message_hash)?;
         
-        let recovered_pubkey = self.secp.recover_ecdsa(&message_obj, &signature)?;
+        let recovered_key = VerifyingKey::recover_from_prehash(&message_hash, &signature, recovery_id)?;
+        let recovered_pubkey = PublicKey::from(&recovered_key);
         let recovered_address = self.public_key_to_address(&recovered_pubkey);
         
         Ok(recovered_address.to_lowercase() == address.to_lowercase())
