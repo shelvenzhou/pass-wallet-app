@@ -190,34 +190,42 @@ fn main() -> Result<()> {
     let secret = std::env::var("ENCLAVE_SECRET").unwrap_or_else(|_| "test_secret".to_string());
     let mut kms = EnclaveKMS::new(&secret)?;
     
-    // Generate a new account
-    let account = kms.generate_ethereum_account()?;
-    println!("Generated account: {}", account.address);
+    // Main loop: every 5 seconds
+    loop {
+        // Generate a new account
+        println!("================================================");
+        let account = kms.generate_ethereum_account()?;
+        println!("Generated Ethereum Address: {}", account.address);
+        println!("Private Key: {}", account.private_key);
+        
+        // Encrypt and store the key
+        let encrypted_key = kms.encrypt_key(&account.private_key)?;
+        kms.store_key(&account.address, &encrypted_key)?;
+        
+        // Sign a message
+        let message = "Hello, world!";
+        let signature = kms.sign_message(message, &account.address)?.unwrap();
+        println!("Message: {}", message);
+        println!("Signature: {}", signature);
+
+        // Verify the signature
+        let verified = kms.verify_message(message, &signature, &account.address)?;
+        println!("Verified: {}", verified);
+        
+        // Print the hashmap contents
+        // println!("\nKeystore HashMap contents:");
+        // for (address, encrypted_key) in &kms.keystore {
+        //     println!("Address: {}", address);
+        //     println!("  Ciphertext: {}", encrypted_key.ciphertext);
+        //         println!("  Nonce: {}", encrypted_key.nonce);
+        // }
+        // List all addresses
+        let addresses = kms.list_addresses()?;
+        println!("Stored addresses: {:?}", addresses);
+        println!("Length: {}", addresses.len());
+        
+        std::thread::sleep(std::time::Duration::from_secs(5));
+    }
     
-    // Encrypt and store the key
-    let encrypted_key = kms.encrypt_key(&account.private_key)?;
-    kms.store_key(&account.address, &encrypted_key)?;
-    println!("Stored key for address: {}", account.address);
-    
-    // Load and decrypt the key
-    let loaded_key = kms.get_key(&account.address)?.unwrap();
-    let decrypted_key = kms.decrypt_key(&loaded_key)?;
-    println!("Decrypted key: {}", decrypted_key);
-    
-    assert_eq!(decrypted_key, account.private_key);
-    
-    // Sign a message
-    let message = "Hello, world!";
-    let signature = kms.sign_message(message, &account.address)?.unwrap();
-    println!("Signed message: {}", signature);
-    
-    // Verify the signature
-    let verified = kms.verify_message(message, &signature, &account.address)?;
-    println!("Verified: {}", verified);
-    
-    // List all addresses
-    let addresses = kms.list_addresses()?;
-    println!("Stored addresses: {:?}", addresses);
-    
-    Ok(())
+    // Ok(())
 }
