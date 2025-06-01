@@ -58,3 +58,5 @@ enclave-kms/__pycache__
 
 # rust nitro-rs
 nitro-rs/target/
+nitro-rs/keystore.json
+target/
