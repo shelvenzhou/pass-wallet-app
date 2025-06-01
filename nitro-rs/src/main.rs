@@ -1,16 +1,15 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
+// use std::fs;
+// use std::path::Path;
 use anyhow::{Result, anyhow};
 use secp256k1::{Secp256k1, SecretKey, PublicKey, Message, All};
-use secp256k1::ecdsa::Signature;
 use rand::RngCore;
 use sha3::{Keccak256, Digest};
 use aes_gcm::{Aes256Gcm, Key, Nonce, aead::Aead, KeyInit};
 use hex;
 
-const KEYSTORE_PATH: &str = "keystore.json";
+// const KEYSTORE_PATH: &str = "keystore.json";
 
 #[derive(Serialize, Deserialize, Clone)]
 struct EncryptedKey {
@@ -27,6 +26,7 @@ struct EthereumAccount {
 struct EnclaveKMS {
     secret: [u8; 32],
     secp: Secp256k1<All>,
+    keystore: HashMap<String, EncryptedKey>,
 }
 
 impl EnclaveKMS {
@@ -38,6 +38,7 @@ impl EnclaveKMS {
         Ok(EnclaveKMS {
             secret: secret_bytes,
             secp: Secp256k1::new(),
+            keystore: HashMap::new(),
         })
     }
 
@@ -101,42 +102,17 @@ impl EnclaveKMS {
         Ok(format!("0x{}", hex::encode(plaintext)))
     }
 
-    fn store_key(&self, address: &str, encrypted_key: &EncryptedKey) -> Result<()> {
-        let mut keystore: HashMap<String, EncryptedKey> = if Path::new(KEYSTORE_PATH).exists() {
-            let content = fs::read_to_string(KEYSTORE_PATH)?;
-            serde_json::from_str(&content)?
-        } else {
-            HashMap::new()
-        };
-        
-        keystore.insert(address.to_string(), encrypted_key.clone());
-        
-        let json = serde_json::to_string_pretty(&keystore)?;
-        fs::write(KEYSTORE_PATH, json)?;
-        
+    fn store_key(&mut self, address: &str, encrypted_key: &EncryptedKey) -> Result<()> {
+        self.keystore.insert(address.to_string(), encrypted_key.clone());
         Ok(())
     }
 
     fn get_key(&self, address: &str) -> Result<Option<EncryptedKey>> {
-        if !Path::new(KEYSTORE_PATH).exists() {
-            return Ok(None);
-        }
-        
-        let content = fs::read_to_string(KEYSTORE_PATH)?;
-        let keystore: HashMap<String, EncryptedKey> = serde_json::from_str(&content)?;
-        
-        Ok(keystore.get(address).cloned())
+        Ok(self.keystore.get(address).cloned())
     }
 
     fn list_addresses(&self) -> Result<Vec<String>> {
-        if !Path::new(KEYSTORE_PATH).exists() {
-            return Ok(Vec::new());
-        }
-        
-        let content = fs::read_to_string(KEYSTORE_PATH)?;
-        let keystore: HashMap<String, EncryptedKey> = serde_json::from_str(&content)?;
-        
-        Ok(keystore.keys().cloned().collect())
+        Ok(self.keystore.keys().cloned().collect())
     }
 
     fn sign_message(&self, message: &str, address: &str) -> Result<Option<String>> {
@@ -204,7 +180,7 @@ impl EnclaveKMS {
 fn main() -> Result<()> {
     // Get secret from environment or use default for testing
     let secret = std::env::var("ENCLAVE_SECRET").unwrap_or_else(|_| "test_secret".to_string());
-    let kms = EnclaveKMS::new(&secret)?;
+    let mut kms = EnclaveKMS::new(&secret)?;
     
     // Generate a new account
     let account = kms.generate_ethereum_account()?;
