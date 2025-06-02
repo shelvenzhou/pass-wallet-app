@@ -14,6 +14,7 @@ nitro-cli run-enclave --eif-path <EIF_PATH> --cpu-count 2  --memory 256 --debug-
 
 View and Stop Enclave
 ```bash
+nitro-cli describe-enclaves
 nitro-cli console --enclave-id <ENCLAVE_ID>
 nitro-cli terminate-enclave --enclave-id <ENCLAVE_ID>
 ```
