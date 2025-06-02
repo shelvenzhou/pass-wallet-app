@@ -6,12 +6,12 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tokio;
 use tokio_vsock::VsockStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::net::Shutdown;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct SignRequest {
     address: String,
     message: String,
@@ -40,7 +40,7 @@ const VSOCK_PORT: u32 = 7778;
 
 
 async fn send_to_enclave_vsock(request: &SignRequest) -> Result<String, String> {
-    let mut stream = VsockStream::connect(ENCLAVE_CID, ENCLAVE_PORT)
+    let mut stream = VsockStream::connect(VSOCK_CID, VSOCK_PORT)
         .await
         .map_err(|e| format!("Failed to connect to enclave: {}", e))?;
 
@@ -51,7 +51,7 @@ async fn send_to_enclave_vsock(request: &SignRequest) -> Result<String, String> 
         .await
         .map_err(|e| format!("Write error: {}", e))?;
     
-    stream.shutdown().await.ok(); // signal EOF
+    stream.shutdown(Shutdown::Write).ok(); // signal EOF
 
     let mut buf = Vec::new();
     stream.read_to_end(&mut buf)
