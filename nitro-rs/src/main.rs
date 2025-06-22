@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::io::{Read, Write};
 // use std::fs;
 // use std::path::Path;
 use anyhow::{Result, anyhow};
@@ -10,8 +11,8 @@ use rand::RngCore;
 use sha3::{Keccak256, Digest};
 use aes_gcm::{Aes256Gcm, Key, Nonce, aead::Aead, KeyInit};
 use hex;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use vsock::{VsockListener, VsockStream};
+use std::thread;
 
 // const KEYSTORE_PATH: &str = "keystore.json";
 
@@ -211,18 +212,18 @@ async fn main() -> Result<()> {
     let kms_arc = Arc::new(Mutex::new(kms));
     
     // Bind to vsock port 7777
-    let listener = VsockListener::bind(7777)?;
+    let listener = VsockListener::bind(&7777)?;
     println!("Enclave KMS listening on vsock port 7777");
     
     loop {
-        match listener.accept().await {
+        match listener.accept() {
             Ok((mut stream, addr)) => {
                 println!("Accepted connection from {}", addr);
                 
-                // Handle the connection in a separate task
+                // Handle the connection in a separate thread
                 let kms_clone = Arc::clone(&kms_arc);
-                tokio::spawn(async move {
-                    if let Err(e) = handle_connection(&mut stream, kms_clone).await {
+                thread::spawn(move || {
+                    if let Err(e) = handle_connection(&mut stream, kms_clone) {
                         eprintln!("Error handling connection: {}", e);
                     }
                 });
@@ -234,22 +235,22 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn handle_connection(stream: &mut VsockStream, kms: Arc<Mutex<EnclaveKMS>>) -> Result<()> {
+fn handle_connection(stream: &mut VsockStream, kms: Arc<Mutex<EnclaveKMS>>) -> Result<()> {
     let mut buffer = Vec::new();
     let mut temp_buffer = [0u8; 1024];
     
     loop {
-        match stream.read(&mut temp_buffer).await {
+        match stream.read(&mut temp_buffer) {
             Ok(0) => break, // Connection closed
             Ok(n) => {
                 buffer.extend_from_slice(&temp_buffer[..n]);
                 
                 // Try to parse complete JSON commands
                 if let Ok(command) = serde_json::from_slice::<Command>(&buffer) {
-                    let response = handle_command(command, kms.clone()).await;
+                    let response = handle_command(command, kms.clone());
                     let response_json = serde_json::to_string(&response)?;
-                    stream.write_all(response_json.as_bytes()).await?;
-                    stream.flush().await?;
+                    stream.write_all(response_json.as_bytes())?;
+                    stream.flush()?;
                     buffer.clear();
                 }
             }
@@ -262,7 +263,7 @@ async fn handle_connection(stream: &mut VsockStream, kms: Arc<Mutex<EnclaveKMS>>
     Ok(())
 }
 
-async fn handle_command(command: Command, kms: Arc<Mutex<EnclaveKMS>>) -> Response {
+fn handle_command(command: Command, kms: Arc<Mutex<EnclaveKMS>>) -> Response {
     let mut kms_guard = kms.lock().unwrap();
     
     match command {

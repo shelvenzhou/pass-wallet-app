@@ -11,7 +11,7 @@ enum Command {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Connect to the enclave on vsock port 7777
-    let mut stream = VsockStream::connect(7777)?;
+    let mut stream = VsockStream::connect(&7777)?;
     println!("Connected to enclave KMS");
 
     // Test keygen command
@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let sign_json = serde_json::to_string(&sign_cmd)?;
         
         // Create a new connection for the sign command
-        let mut sign_stream = VsockStream::connect(7777)?;
+        let mut sign_stream = VsockStream::connect(&7777)?;
         sign_stream.write_all(sign_json.as_bytes())?;
         sign_stream.flush()?;
 
@@ -57,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let list_cmd = json!(Command::List);
     let list_json = serde_json::to_string(&list_cmd)?;
     
-    let mut list_stream = VsockStream::connect(7777)?;
+    let mut list_stream = VsockStream::connect(&7777)?;
     list_stream.write_all(list_json.as_bytes())?;
     list_stream.flush()?;
 
