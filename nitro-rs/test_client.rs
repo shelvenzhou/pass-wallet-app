@@ -1,6 +1,6 @@
 use serde_json::json;
 use std::io::{Read, Write};
-use vsock::VsockStream;
+use vsock::{VsockStream, VsockAddr};
 
 #[derive(serde::Serialize)]
 enum Command {
@@ -11,7 +11,8 @@ enum Command {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Connect to the enclave on vsock port 7777
-    let mut stream = VsockStream::connect(&7777)?;
+    let addr = VsockAddr::new(vsock::VMADDR_CID_LOCAL, 7777);
+    let mut stream = VsockStream::connect(&addr)?;
     println!("Connected to enclave KMS");
 
     // Test keygen command
@@ -43,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let sign_json = serde_json::to_string(&sign_cmd)?;
         
         // Create a new connection for the sign command
-        let mut sign_stream = VsockStream::connect(&7777)?;
+        let mut sign_stream = VsockStream::connect(&addr)?;
         sign_stream.write_all(sign_json.as_bytes())?;
         sign_stream.flush()?;
 
@@ -57,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let list_cmd = json!(Command::List);
     let list_json = serde_json::to_string(&list_cmd)?;
     
-    let mut list_stream = VsockStream::connect(&7777)?;
+    let mut list_stream = VsockStream::connect(&addr)?;
     list_stream.write_all(list_json.as_bytes())?;
     list_stream.flush()?;
 

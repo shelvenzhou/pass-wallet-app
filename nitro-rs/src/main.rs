@@ -11,7 +11,7 @@ use rand::RngCore;
 use sha3::{Keccak256, Digest};
 use aes_gcm::{Aes256Gcm, Key, Nonce, aead::Aead, KeyInit};
 use hex;
-use vsock::{VsockListener, VsockStream};
+use vsock::{VsockListener, VsockStream, VsockAddr};
 use std::thread;
 
 // const KEYSTORE_PATH: &str = "keystore.json";
@@ -212,7 +212,8 @@ async fn main() -> Result<()> {
     let kms_arc = Arc::new(Mutex::new(kms));
     
     // Bind to vsock port 7777
-    let listener = VsockListener::bind(&7777)?;
+    let addr = VsockAddr::new(vsock::VMADDR_CID_ANY, 7777);
+    let listener = VsockListener::bind(&addr)?;
     println!("Enclave KMS listening on vsock port 7777");
     
     loop {
