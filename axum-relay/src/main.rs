@@ -20,12 +20,21 @@ struct SignRequest {
 #[derive(Serialize)]
 struct GenerateResponse {
     address: String,
+    private_key: String,
     message: String,
 }
 
 #[derive(Serialize)]
 struct SignResponse {
     signature: String,
+    message: String,
+    address: String,
+}
+
+#[derive(Serialize)]
+struct AddressesResponse {
+    addresses: Vec<String>,
+    count: usize,
 }
 
 #[derive(Serialize)]
@@ -33,18 +42,32 @@ struct ErrorResponse {
     error: String,
 }
 
+// Enclave command types
+#[derive(Serialize)]
+enum EnclaveCommand {
+    Keygen,
+    Sign { address: String, message: String },
+    List,
+}
+
+#[derive(Deserialize)]
+struct EnclaveResponse {
+    success: bool,
+    data: Option<serde_json::Value>,
+    error: Option<String>,
+}
+
 // Constants
 const HTTP_PORT: u16 = 7777;
 const VSOCK_CID: u32 = 3;
-const VSOCK_PORT: u32 = 7778;
+const VSOCK_PORT: u32 = 7777; // Updated to match the enclave port
 
-
-async fn send_to_enclave_vsock(request: &SignRequest) -> Result<String, String> {
+async fn send_command_to_enclave(command: &EnclaveCommand) -> Result<EnclaveResponse, String> {
     let mut stream = VsockStream::connect(VSOCK_CID, VSOCK_PORT)
         .await
         .map_err(|e| format!("Failed to connect to enclave: {}", e))?;
 
-    let json_payload = serde_json::to_string(request)
+    let json_payload = serde_json::to_string(command)
         .map_err(|e| format!("Serialization error: {}", e))?;
 
     stream.write_all(json_payload.as_bytes())
@@ -58,28 +81,113 @@ async fn send_to_enclave_vsock(request: &SignRequest) -> Result<String, String> 
         .await
         .map_err(|e| format!("Read error: {}", e))?;
 
-    String::from_utf8(buf).map_err(|e| format!("UTF-8 error: {}", e))
+    let response_str = String::from_utf8(buf)
+        .map_err(|e| format!("UTF-8 error: {}", e))?;
+
+    serde_json::from_str(&response_str)
+        .map_err(|e| format!("JSON deserialization error: {}", e))
 }
 
 async fn generate() -> Result<ResponseJson<GenerateResponse>, (StatusCode, ResponseJson<ErrorResponse>)> {
-    // Return dummy data for now
-    let response = GenerateResponse {
-        address: "0x742d35Cc6634C0532925a3b8D4C9db96590c6C87".to_string(),
-        message: "Account generated and stored in enclave".to_string(),
-    };
+    let command = EnclaveCommand::Keygen;
     
-    Ok(ResponseJson(response))
+    match send_command_to_enclave(&command).await {
+        Ok(response) => {
+            if response.success {
+                if let Some(data) = response.data {
+                    if let (Some(address), Some(private_key)) = (
+                        data["address"].as_str(),
+                        data["private_key"].as_str()
+                    ) {
+                        let generate_response = GenerateResponse {
+                            address: address.to_string(),
+                            private_key: private_key.to_string(),
+                            message: "Account generated and stored in enclave".to_string(),
+                        };
+                        Ok(ResponseJson(generate_response))
+                    } else {
+                        Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            ResponseJson(ErrorResponse {
+                                error: "Invalid response format from enclave".to_string(),
+                            }),
+                        ))
+                    }
+                } else {
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        ResponseJson(ErrorResponse {
+                            error: "No data in enclave response".to_string(),
+                        }),
+                    ))
+                }
+            } else {
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ResponseJson(ErrorResponse {
+                        error: response.error.unwrap_or_else(|| "Unknown enclave error".to_string()),
+                    }),
+                ))
+            }
+        }
+        Err(err) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ResponseJson(ErrorResponse { error: err }),
+        )),
+    }
 }
 
-async fn addresses() -> ResponseJson<Vec<String>> {
-    // Return dummy addresses for now
-    let dummy_addresses = vec![
-        "0x742d35Cc6634C0532925a3b8D4C9db96590c6C87".to_string(),
-        "0x8ba1f109551bD432803012645Hac136c22C177ec".to_string(),
-        "0x1234567890123456789012345678901234567890".to_string(),
-    ];
+async fn addresses() -> Result<ResponseJson<AddressesResponse>, (StatusCode, ResponseJson<ErrorResponse>)> {
+    let command = EnclaveCommand::List;
     
-    ResponseJson(dummy_addresses)
+    match send_command_to_enclave(&command).await {
+        Ok(response) => {
+            if response.success {
+                if let Some(data) = response.data {
+                    if let (Some(addresses), Some(count)) = (
+                        data["addresses"].as_array(),
+                        data["count"].as_u64()
+                    ) {
+                        let address_list: Vec<String> = addresses
+                            .iter()
+                            .filter_map(|addr| addr.as_str().map(|s| s.to_string()))
+                            .collect();
+                        
+                        let addresses_response = AddressesResponse {
+                            addresses: address_list,
+                            count: count as usize,
+                        };
+                        Ok(ResponseJson(addresses_response))
+                    } else {
+                        Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            ResponseJson(ErrorResponse {
+                                error: "Invalid response format from enclave".to_string(),
+                            }),
+                        ))
+                    }
+                } else {
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        ResponseJson(ErrorResponse {
+                            error: "No data in enclave response".to_string(),
+                        }),
+                    ))
+                }
+            } else {
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ResponseJson(ErrorResponse {
+                        error: response.error.unwrap_or_else(|| "Unknown enclave error".to_string()),
+                    }),
+                ))
+            }
+        }
+        Err(err) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ResponseJson(ErrorResponse { error: err }),
+        )),
+    }
 }
 
 async fn sign(
@@ -96,8 +204,51 @@ async fn sign(
         ));
     }
 
-    match send_to_enclave_vsock(&payload).await {
-        Ok(signature) => Ok(ResponseJson(SignResponse { signature })),
+    let command = EnclaveCommand::Sign {
+        address: payload.address.clone(),
+        message: payload.message.clone(),
+    };
+
+    match send_command_to_enclave(&command).await {
+        Ok(response) => {
+            if response.success {
+                if let Some(data) = response.data {
+                    if let (Some(signature), Some(message), Some(address)) = (
+                        data["signature"].as_str(),
+                        data["message"].as_str(),
+                        data["address"].as_str()
+                    ) {
+                        let sign_response = SignResponse {
+                            signature: signature.to_string(),
+                            message: message.to_string(),
+                            address: address.to_string(),
+                        };
+                        Ok(ResponseJson(sign_response))
+                    } else {
+                        Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            ResponseJson(ErrorResponse {
+                                error: "Invalid response format from enclave".to_string(),
+                            }),
+                        ))
+                    }
+                } else {
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        ResponseJson(ErrorResponse {
+                            error: "No data in enclave response".to_string(),
+                        }),
+                    ))
+                }
+            } else {
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ResponseJson(ErrorResponse {
+                        error: response.error.unwrap_or_else(|| "Unknown enclave error".to_string()),
+                    }),
+                ))
+            }
+        }
         Err(err) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             ResponseJson(ErrorResponse { error: err }),
@@ -116,7 +267,8 @@ async fn main() {
         .await
         .unwrap();
     
-    println!("Server running on http://0.0.0.0:{}", HTTP_PORT);
+    println!("Axum relay server running on http://0.0.0.0:{}", HTTP_PORT);
+    println!("Connecting to enclave on vsock CID: {}, Port: {}", VSOCK_CID, VSOCK_PORT);
     
     axum::serve(listener, app).await.unwrap();
 }

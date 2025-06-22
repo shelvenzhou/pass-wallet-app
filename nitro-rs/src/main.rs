@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 // use std::fs;
 // use std::path::Path;
 use anyhow::{Result, anyhow};
@@ -9,6 +10,8 @@ use rand::RngCore;
 use sha3::{Keccak256, Digest};
 use aes_gcm::{Aes256Gcm, Key, Nonce, aead::Aead, KeyInit};
 use hex;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use vsock::{VsockListener, VsockStream};
 
 // const KEYSTORE_PATH: &str = "keystore.json";
 
@@ -24,9 +27,10 @@ struct EthereumAccount {
     private_key: String,
 }
 
+#[derive(Clone)]
 struct EnclaveKMS {
     secret: [u8; 32],
-    keystore: HashMap<String, EncryptedKey>,
+    keystore: Arc<Mutex<HashMap<String, EncryptedKey>>>,
 }
 
 impl EnclaveKMS {
@@ -37,7 +41,7 @@ impl EnclaveKMS {
         
         Ok(EnclaveKMS {
             secret: secret_bytes,
-            keystore: HashMap::new(),
+            keystore: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -103,16 +107,16 @@ impl EnclaveKMS {
     }
 
     fn store_key(&mut self, address: &str, encrypted_key: &EncryptedKey) -> Result<()> {
-        self.keystore.insert(address.to_string(), encrypted_key.clone());
+        self.keystore.lock().unwrap().insert(address.to_string(), encrypted_key.clone());
         Ok(())
     }
 
     fn get_key(&self, address: &str) -> Result<Option<EncryptedKey>> {
-        Ok(self.keystore.get(address).cloned())
+        Ok(self.keystore.lock().unwrap().get(address).cloned())
     }
 
     fn list_addresses(&self) -> Result<Vec<String>> {
-        Ok(self.keystore.keys().cloned().collect())
+        Ok(self.keystore.lock().unwrap().keys().cloned().collect())
     }
 
     fn sign_message(&self, message: &str, address: &str) -> Result<Option<String>> {
@@ -185,47 +189,159 @@ impl EnclaveKMS {
     }
 }
 
-fn main() -> Result<()> {
+#[derive(Serialize, Deserialize)]
+enum Command {
+    Keygen,
+    Sign { address: String, message: String },
+    List,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Response {
+    success: bool,
+    data: Option<serde_json::Value>,
+    error: Option<String>,
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
     // Get secret from environment or use default for testing
     let secret = std::env::var("ENCLAVE_SECRET").unwrap_or_else(|_| "test_secret".to_string());
-    let mut kms = EnclaveKMS::new(&secret)?;
+    let kms = EnclaveKMS::new(&secret)?;
+    let kms_arc = Arc::new(Mutex::new(kms));
     
-    // Main loop: every 5 seconds
+    // Bind to vsock port 7777
+    let listener = VsockListener::bind(7777)?;
+    println!("Enclave KMS listening on vsock port 7777");
+    
     loop {
-        // Generate a new account
-        println!("================================================");
-        let account = kms.generate_ethereum_account()?;
-        println!("Generated Ethereum Address: {}", account.address);
-        println!("Private Key: {}", account.private_key);
-        
-        // Encrypt and store the key
-        let encrypted_key = kms.encrypt_key(&account.private_key)?;
-        kms.store_key(&account.address, &encrypted_key)?;
-        
-        // Sign a message
-        let message = "Hello, world!";
-        let signature = kms.sign_message(message, &account.address)?.unwrap();
-        println!("Message: {}", message);
-        println!("Signature: {}", signature);
+        match listener.accept().await {
+            Ok((mut stream, addr)) => {
+                println!("Accepted connection from {}", addr);
+                
+                // Handle the connection in a separate task
+                let kms_clone = Arc::clone(&kms_arc);
+                tokio::spawn(async move {
+                    if let Err(e) = handle_connection(&mut stream, kms_clone).await {
+                        eprintln!("Error handling connection: {}", e);
+                    }
+                });
+            }
+            Err(e) => {
+                eprintln!("Error accepting connection: {}", e);
+            }
+        }
+    }
+}
 
-        // Verify the signature
-        let verified = kms.verify_message(message, &signature, &account.address)?;
-        println!("Verified: {}", verified);
-        
-        // Print the hashmap contents
-        // println!("\nKeystore HashMap contents:");
-        // for (address, encrypted_key) in &kms.keystore {
-        //     println!("Address: {}", address);
-        //     println!("  Ciphertext: {}", encrypted_key.ciphertext);
-        //         println!("  Nonce: {}", encrypted_key.nonce);
-        // }
-        // List all addresses
-        let addresses = kms.list_addresses()?;
-        println!("Stored addresses: {:?}", addresses);
-        println!("Length: {}", addresses.len());
-        
-        std::thread::sleep(std::time::Duration::from_secs(5));
+async fn handle_connection(stream: &mut VsockStream, kms: Arc<Mutex<EnclaveKMS>>) -> Result<()> {
+    let mut buffer = Vec::new();
+    let mut temp_buffer = [0u8; 1024];
+    
+    loop {
+        match stream.read(&mut temp_buffer).await {
+            Ok(0) => break, // Connection closed
+            Ok(n) => {
+                buffer.extend_from_slice(&temp_buffer[..n]);
+                
+                // Try to parse complete JSON commands
+                if let Ok(command) = serde_json::from_slice::<Command>(&buffer) {
+                    let response = handle_command(command, kms.clone()).await;
+                    let response_json = serde_json::to_string(&response)?;
+                    stream.write_all(response_json.as_bytes()).await?;
+                    stream.flush().await?;
+                    buffer.clear();
+                }
+            }
+            Err(e) => {
+                return Err(anyhow!("Read error: {}", e));
+            }
+        }
     }
     
-    // Ok(())
+    Ok(())
+}
+
+async fn handle_command(command: Command, kms: Arc<Mutex<EnclaveKMS>>) -> Response {
+    let mut kms_guard = kms.lock().unwrap();
+    
+    match command {
+        Command::Keygen => {
+            match kms_guard.generate_ethereum_account() {
+                Ok(account) => {
+                    // Encrypt and store the key
+                    match kms_guard.encrypt_key(&account.private_key) {
+                        Ok(encrypted_key) => {
+                            if let Err(e) = kms_guard.store_key(&account.address, &encrypted_key) {
+                                return Response {
+                                    success: false,
+                                    data: None,
+                                    error: Some(format!("Failed to store key: {}", e)),
+                                };
+                            }
+                            
+                            Response {
+                                success: true,
+                                data: Some(serde_json::json!({
+                                    "address": account.address,
+                                    "private_key": account.private_key
+                                })),
+                                error: None,
+                            }
+                        }
+                        Err(e) => Response {
+                            success: false,
+                            data: None,
+                            error: Some(format!("Failed to encrypt key: {}", e)),
+                        },
+                    }
+                }
+                Err(e) => Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to generate account: {}", e)),
+                },
+            }
+        }
+        Command::Sign { address, message } => {
+            match kms_guard.sign_message(&message, &address) {
+                Ok(Some(signature)) => Response {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "signature": signature,
+                        "message": message,
+                        "address": address
+                    })),
+                    error: None,
+                },
+                Ok(None) => Response {
+                    success: false,
+                    data: None,
+                    error: Some("Address not found or signing failed".to_string()),
+                },
+                Err(e) => Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Signing error: {}", e)),
+                },
+            }
+        }
+        Command::List => {
+            match kms_guard.list_addresses() {
+                Ok(addresses) => Response {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "addresses": addresses,
+                        "count": addresses.len()
+                    })),
+                    error: None,
+                },
+                Err(e) => Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to list addresses: {}", e)),
+                },
+            }
+        }
+    }
 }
