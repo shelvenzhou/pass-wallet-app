@@ -59,7 +59,7 @@ struct EnclaveResponse {
 
 // Constants
 const HTTP_PORT: u16 = 7777;
-const VSOCK_CID: u32 = 3;
+const VSOCK_CID: u32 = 16;
 const VSOCK_PORT: u32 = 7777; // Updated to match the enclave port
 
 async fn send_command_to_enclave(command: &EnclaveCommand) -> Result<EnclaveResponse, String> {
