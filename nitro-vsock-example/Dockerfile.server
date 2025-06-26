@@ -3,5 +3,5 @@
 
 FROM alpine:latest
 COPY vsock-sample .
-CMD ["./vsock-sample", "server", "--port", "5005"]
+CMD ["./vsock-sample", "server", "--port", "7777"]
 
