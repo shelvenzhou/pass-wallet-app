@@ -2,14 +2,11 @@
 name = "nitro-rs"
 version = "0.1.0"
 edition = "2021"
+default-run = "nitro-rs"
 
 [[bin]]
 name = "nitro-rs"
 path = "src/main.rs"
-
-[[bin]]
-name = "test_client"
-path = "test_client.rs"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
