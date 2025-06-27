@@ -60,3 +60,11 @@ enclave-kms/__pycache__
 nitro-rs/target/
 nitro-rs/keystore.json
 target/
+
+
+# nitro-vsock-sample
+nitro-vsock-sample/target/
+nitro-vsock-sample/vsock_sample_*.eif
+nitro-vsock-sample/server
+nitro-vsock-sample/client
+nitro-vsock-sample/vsock-sample
