@@ -1,9 +1,11 @@
 pub mod command_parser;
 pub mod protocol_helpers;
+pub mod server_logic;
 pub mod utils;
 
 use command_parser::{ClientArgs, ServerArgs};
 use protocol_helpers::{recv_loop, recv_u64, send_loop, send_u64};
+use server_logic::parse_command;
 
 use nix::sys::socket::listen as listen_vsock;
 use nix::sys::socket::{accept, bind, connect, shutdown, socket};
@@ -76,23 +78,33 @@ fn vsock_connect(cid: u32, port: u32) -> Result<VsockSocket, String> {
     Err(err_msg)
 }
 
-/// Send 'Hello, world!' to the server
+/// Send 'Hello, world!' to the server. Entry point for the client.
 pub fn client(args: ClientArgs) -> Result<(), String> {
     let vsocket = vsock_connect(args.cid, args.port)?;
     let fd = vsocket.as_raw_fd();
 
     // TODO: Replace this with your client code
-    let data = "Hello, world!".to_string();
+    let data = "hello".to_string();
     let buf = data.as_bytes();
     let len: u64 = buf.len().try_into().map_err(|err| format!("{:?}", err))?;
     send_u64(fd, len)?;
     send_loop(fd, buf, len)?;
+    println!("Sent: {}", data);
+
+    // Wait for and receive the server's response
+    let mut response_buf = [0u8; BUF_MAX_LEN];
+    let response_len = recv_u64(fd)?;
+    recv_loop(fd, &mut response_buf, response_len)?;
+    
+    let response = String::from_utf8(response_buf[..response_len as usize].to_vec())
+        .map_err(|err| format!("The received bytes are not UTF-8: {:?}", err))?;
+    println!("Received response: {}", response);
 
     Ok(())
 }
 
-/// Accept connections on a certain port and print
-/// the received data
+/// Accept connections on a certain port and print the received data.
+/// Entry point for the server.
 pub fn server(args: ServerArgs) -> Result<(), String> {
     let socket_fd = socket(
         AddressFamily::Vsock,
@@ -108,21 +120,55 @@ pub fn server(args: ServerArgs) -> Result<(), String> {
 
     listen_vsock(socket_fd, BACKLOG).map_err(|err| format!("Listen failed: {:?}", err))?;
 
-    loop {
-        let vsocket = VsockSocket::new(
-            accept(socket_fd).map_err(|err| format!("Accept failed: {:?}", err))?,
-            Shutdown::Read,
-        );
-        let fd = vsocket.as_raw_fd();
+    println!("Server listening on port {}", args.port);
 
-        // TODO: Replace this with your server code
-        let len = recv_u64(fd)?;
-        let mut buf = [0u8; BUF_MAX_LEN];
-        recv_loop(fd, &mut buf, len)?;
-        println!(
-            "{}",
-            String::from_utf8(buf.to_vec())
-                .map_err(|err| format!("The received bytes are not UTF-8: {:?}", err))?
-        );
+    loop {
+        let vsocket = match accept(socket_fd) {
+            Ok(fd) => VsockSocket::new(fd, Shutdown::Read),
+            Err(e) => {
+                eprintln!("Accept failed: {:?}", e);
+                continue;
+            }
+        };
+        
+        let fd = vsocket.as_raw_fd();
+        println!("Accepted connection on fd {}", fd);
+
+        // Handle each connection in a separate scope to ensure proper cleanup
+        let result = handle_connection(fd);
+        if let Err(e) = result {
+            eprintln!("Error handling connection: {}", e);
+        }
+        
+        // vsocket will be automatically dropped here, closing the connection
     }
+}
+
+fn handle_connection(fd: RawFd) -> Result<(), String> {
+    // Receive data from client
+    let mut buf = [0u8; BUF_MAX_LEN];
+    let len = recv_u64(fd)?;
+    recv_loop(fd, &mut buf, len)?;
+    
+    let received_data = String::from_utf8(buf[..len as usize].to_vec())
+        .map_err(|err| format!("The received bytes are not UTF-8: {:?}", err))?;
+    
+    println!("Received: {}", received_data);
+
+    // Parse and execute command
+    let result = parse_command(&received_data);
+    
+    // Send result back to client
+    let response = match result {
+        Ok(_) => "Command executed successfully".to_string(),
+        Err(e) => format!("Error: {}", e),
+    };
+    
+    let response_bytes = response.as_bytes();
+    let response_len: u64 = response_bytes.len().try_into().map_err(|err| format!("{:?}", err))?;
+    send_u64(fd, response_len)?;
+    send_loop(fd, response_bytes, response_len)?;
+    
+    println!("Sent response: {}", response);
+    Ok(())
 }
