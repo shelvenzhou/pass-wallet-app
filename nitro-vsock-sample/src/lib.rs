@@ -2,12 +2,11 @@ pub mod command_parser;
 pub mod protocol_helpers;
 pub mod server_logic;
 pub mod utils;
-pub mod key_manager;
+pub mod http_client;
 
 use command_parser::{ClientArgs, ServerArgs};
 use protocol_helpers::{recv_loop, recv_u64, send_loop, send_u64};
 use server_logic::parse_command;
-use key_manager::EnclaveKMS;
 
 use nix::sys::socket::listen as listen_vsock;
 use nix::sys::socket::{accept, bind, connect, shutdown, socket};
@@ -24,7 +23,7 @@ const BACKLOG: usize = 128;
 // Maximum number of connection attempts
 const MAX_CONNECTION_ATTEMPTS: usize = 5;
 
-struct VsockSocket {
+pub struct VsockSocket {
     socket_fd: RawFd,
     shutdown_mode: Shutdown,
 }
@@ -53,7 +52,7 @@ impl AsRawFd for VsockSocket {
 }
 
 /// Initiate a connection on an AF_VSOCK socket
-fn vsock_connect(cid: u32, port: u32) -> Result<VsockSocket, String> {
+pub fn vsock_connect(cid: u32, port: u32) -> Result<VsockSocket, String> {
     let sockaddr = SockAddr::new_vsock(cid, port);
     let mut err_msg = String::new();
 
@@ -86,7 +85,7 @@ pub fn client(args: ClientArgs) -> Result<(), String> {
     let fd = vsocket.as_raw_fd();
 
     // Send JSON keygen command
-    let data = serde_json::json!({"command": "keygen"}).to_string();
+    let data = serde_json::json!({"Keygen": null}).to_string();
     let buf = data.as_bytes();
     let len: u64 = buf.len().try_into().map_err(|err| format!("{:?}", err))?;
     send_u64(fd, len)?;
@@ -124,11 +123,6 @@ pub fn server(args: ServerArgs) -> Result<(), String> {
 
     println!("Server listening on port {}", args.port);
 
-    // Initialize the KMS
-    let secret = std::env::var("ENCLAVE_SECRET").unwrap_or_else(|_| "test_secret".to_string());
-    let mut kms = EnclaveKMS::new(&secret)
-        .map_err(|e| format!("Failed to initialize KMS: {}", e))?;
-
     loop {
         let vsocket = match accept(socket_fd) {
             Ok(fd) => VsockSocket::new(fd, Shutdown::Read),
@@ -142,7 +136,7 @@ pub fn server(args: ServerArgs) -> Result<(), String> {
         println!("Accepted connection on fd {}", fd);
 
         // Handle each connection in a separate scope to ensure proper cleanup
-        let result = handle_connection(fd, &mut kms);
+        let result = handle_connection(fd);
         if let Err(e) = result {
             eprintln!("Error handling connection: {}", e);
         }
@@ -151,7 +145,7 @@ pub fn server(args: ServerArgs) -> Result<(), String> {
     }
 }
 
-fn handle_connection(fd: RawFd, kms: &mut EnclaveKMS) -> Result<(), String> {
+fn handle_connection(fd: RawFd) -> Result<(), String> {
     // Receive data from client
     let mut buf = [0u8; BUF_MAX_LEN];
     let len = recv_u64(fd)?;
@@ -162,84 +156,18 @@ fn handle_connection(fd: RawFd, kms: &mut EnclaveKMS) -> Result<(), String> {
     
     println!("Received: {}", received_data);
 
-    // Try to parse as JSON command
-    let response = if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&received_data) {
-        if let Some(cmd) = json_val.get("command").and_then(|v| v.as_str()) {
-            match cmd {
-                "keygen" => {
-                    match kms.handle_keygen() {
-                        Ok(account) => {
-                            let response_json = serde_json::json!({
-                                "success": true,
-                                "command": "keygen",
-                                "data": {
-                                    "address": account.address,
-                                    "public_key": account.address // For now, we'll use address as public key identifier
-                                }
-                            });
-                            serde_json::to_string(&response_json)
-                                .map_err(|e| format!("Failed to serialize response: {}", e))?
-                        }
-                        Err(e) => {
-                            let error_json = serde_json::json!({
-                                "success": false,
-                                "command": "keygen",
-                                "error": format!("Key generation failed: {}", e)
-                            });
-                            serde_json::to_string(&error_json)
-                                .map_err(|e| format!("Failed to serialize error: {}", e))?
-                        }
-                    }
-                }
-                _ => {
-                    let error_json = serde_json::json!({
-                        "success": false,
-                        "error": format!("Unknown command: {}", cmd)
-                    });
-                    serde_json::to_string(&error_json)
-                        .map_err(|e| format!("Failed to serialize error: {}", e))?
-                }
-            }
-        } else {
-            let error_json = serde_json::json!({
-                "success": false,
-                "error": "Malformed JSON: missing 'command' field"
-            });
-            serde_json::to_string(&error_json)
-                .map_err(|e| format!("Failed to serialize error: {}", e))?
-        }
-    } else if received_data.trim() == "/keygen" {
-        // Legacy string command
-        match kms.handle_keygen() {
-            Ok(account) => {
-                let response_json = serde_json::json!({
-                    "success": true,
-                    "command": "keygen",
-                    "data": {
-                        "address": account.address,
-                        "public_key": account.address
-                    }
-                });
-                serde_json::to_string(&response_json)
-                    .map_err(|e| format!("Failed to serialize response: {}", e))?
-            }
-            Err(e) => {
-                let error_json = serde_json::json!({
-                    "success": false,
-                    "command": "keygen",
-                    "error": format!("Key generation failed: {}", e)
-                });
-                serde_json::to_string(&error_json)
-                    .map_err(|e| format!("Failed to serialize error: {}", e))?
-            }
-        }
-    } else {
-        // Handle other commands with the existing parse_command function
-        let result = parse_command(&received_data);
-        match result {
-            Ok(_) => "Command executed successfully".to_string(),
-            Err(e) => format!("Error: {}", e),
-        }
+    // Parse and execute command
+    let result = parse_command(&received_data);
+    
+    // Send result back to client
+    let response = match result {
+        Ok(response) => serde_json::to_string(&response)
+            .map_err(|err| format!("Failed to serialize response: {:?}", err))?,
+        Err(e) => serde_json::to_string(&server_logic::Response {
+            success: false,
+            data: None,
+            error: Some(e),
+        }).map_err(|err| format!("Failed to serialize error response: {:?}", err))?,
     };
     
     let response_bytes = response.as_bytes();
