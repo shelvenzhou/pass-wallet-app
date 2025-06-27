@@ -18,6 +18,10 @@ client: build
 	docker build -t vsock-sample-client -f Dockerfile.client .
 	nitro-cli build-enclave --docker-uri vsock-sample-client --output-file vsock_sample_client.eif
 
+enclave:
+	make server
+	nitro-cli run-enclave --eif-path vsock_sample_client.eif --cpu-count 2 --memory 256 --debug-mode
+
 .PHONY: clean
 clean:
 	rm -rf ${RUST_DIR}/target ${RUST_DIR}/vsock_sample_*.eif ${RUST_DIR}/vsock-sample
