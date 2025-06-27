@@ -11,13 +11,7 @@ ifeq ($(DOWNLOAD_RUST), 1)
 	curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y
 	rustup target install ${ARCH}-unknown-linux-musl
 	cargo build --manifest-path=${RUST_DIR}/Cargo.toml --target=${ARCH}-unknown-linux-musl --release
-	cp ${RUST_DIR}/target/${ARCH}-unknown-linux-musl/release/server ${RUST_DIR}
-	cp ${RUST_DIR}/target/${ARCH}-unknown-linux-musl/release/client ${RUST_DIR}
-else
-	cargo build --manifest-path=${RUST_DIR}/Cargo.toml --release
-	cp ${RUST_DIR}/target/release/server ${RUST_DIR}
-	cp ${RUST_DIR}/target/release/client ${RUST_DIR}
-endif
+	cp ${RUST_DIR}/target/${ARCH}-unknown-linux-musl/release/vsock-sample ${RUST_DIR}
 
 server: build
 	docker build -t vsock-sample-server -f Dockerfile.server .
@@ -26,10 +20,6 @@ server: build
 client: build
 	docker build -t vsock-sample-client -f Dockerfile.client .
 	nitro-cli build-enclave --docker-uri vsock-sample-client --output-file vsock_sample_client.eif
-
-enclave:
-	make server
-	nitro-cli run-enclave --eif-path vsock_sample_client.eif --cpu-count 2 --memory 256 --debug-mode
 
 .PHONY: clean
 clean:
