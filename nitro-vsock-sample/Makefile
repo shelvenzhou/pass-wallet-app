@@ -24,7 +24,7 @@ client: build
 	nitro-cli build-enclave --docker-uri vsock-sample-client --output-file vsock_sample_client.eif
 
 run-client: build
-	./vsock-sample client --cid 18 --port 7777
+	./vsock-sample client --cid 21 --port 7777
 
 .PHONY: clean
 clean:

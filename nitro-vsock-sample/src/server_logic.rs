@@ -6,6 +6,10 @@ pub fn parse_command(command: &str) -> Result<(), String> {
             println!("Hello, world!");
             Ok(())
         }
+        "keygen" => {
+            println!("Keygen command received");
+            Ok(())
+        }
         _ => Err(format!("Unknown command: {}", command)),
     }
 }
