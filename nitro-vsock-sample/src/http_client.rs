@@ -85,7 +85,9 @@ async fn addresses_handler() -> Result<JsonResponse<Vec<String>>, (StatusCode, J
     match send_command_to_enclave(cid, port, &command.to_string()).await {
         Ok(response) => {
             if let Some(data) = response.data {
+
                 if let Some(addresses) = data.as_array() {
+                    println!("Addresses: {:?}", addresses);
                     let address_list: Vec<String> = addresses.iter()
                         .filter_map(|v| v.as_str().map(|s| s.to_string()))
                         .collect();

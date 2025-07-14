@@ -10,9 +10,9 @@
 
 ## Step 1: Begin Nitro Enclave Server
 
-Create EIF Image:
+Create EIF Image and Deploy to Enclave
 ```bash
-make server
+make enclave
 ```
 
 Deploy EIF Image to Enclave, get Enclave ID ("i-xxxx")
@@ -54,6 +54,14 @@ curl -X POST http://localhost:5000/sign \
   -H "Content-Type: application/json" \
   -d '{"address": "0x...", "message": "Hello World"}'
 ```
+
+## View and Stop Enclave
+```bash
+nitro-cli describe-enclaves
+nitro-cli console --enclave-id $ENCLAVE_ID
+nitro-cli terminate-enclave --enclave-id $ENCLAVE_ID
+```
+
 
 # Architecture Flow
 

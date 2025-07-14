@@ -24,12 +24,18 @@ client: build
 	nitro-cli build-enclave --docker-uri vsock-sample-client --output-file vsock_sample_client.eif
 
 run-client: build
-	./vsock-sample client --cid 16 --port 7777
+	./vsock-sample client --cid 17 --port 7777
 
 .PHONY: clean
 clean:
 	rm -rf ${RUST_DIR}/target ${RUST_DIR}/vsock_sample_*.eif ${RUST_DIR}/server ${RUST_DIR}/client
 
 enclave: server
-	nitro-cli run-enclave --eif-path vsock_sample_server.eif --cpu-count 2 --memory 256 --debug-mode
+	@echo "Starting enclave..."
+	@ENCLAVE_ID=$$(nitro-cli run-enclave --eif-path vsock_sample_server.eif --cpu-count 2 --memory 256 | grep -o 'i-[0-9a-f]*' | head -1) && \
+	echo "Enclave ID: $$ENCLAVE_ID" && \
+	echo "CID: 16" && \
+	export ENCLAVE_ID=$$ENCLAVE_ID && \
+	export ENCLAVE_CID=16 && \
+	echo "Exported ENCLAVE_ID=$$ENCLAVE_ID and ENCLAVE_CID=16"
 
