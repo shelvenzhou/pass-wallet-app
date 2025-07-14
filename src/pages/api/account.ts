@@ -26,15 +26,19 @@ export default async function handler(
         }
 
         // Call the enclave API to generate a new account
+        console.log('calling URL: ', `${ENCLAVE_URL}/generate`);
         const enclaveResponse = await fetch(`${ENCLAVE_URL}/generate`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-          }
+          },
+          body: JSON.stringify({})
         });
 
         if (!enclaveResponse.ok) {
-          throw new Error('Failed to generate account in enclave');
+          const errorText = await enclaveResponse.text();
+          console.error('Enclave response error:', errorText);
+          throw new Error(`Failed to generate account in enclave: ${errorText}`);
         }
 
         const { address } = await enclaveResponse.json();
