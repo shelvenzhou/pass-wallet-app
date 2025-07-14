@@ -26,7 +26,7 @@ client: build
 	nitro-cli build-enclave --docker-uri nitro-enclave-client --output-file nitro_enclave_client.eif
 
 run-client: build
-	./nitro-enclave client --cid 17 --port 7777
+	./nitro-enclave client --cid 21 --port 7777
 
 .PHONY: clean
 clean:
