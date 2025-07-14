@@ -4,7 +4,7 @@ By Jay Yu
 
 
 ## Overview
-PassWallet is a decentralized wallet application that enables secure key management through a simulated Trusted Execution Environment (TEE). It combines Next.js, RainbowKit, and WalletConnect for the frontend with a Python-based simulation of a secure enclave for key management. This is a demo application based on recent work on key encumbrance techniques and TEE-based wallet platforms such as [Liquefaction](https://github.com/key-encumbrance/liquefaction).
+PassWallet is a decentralized wallet application that enables secure key management through a simulated Trusted Execution Environment (TEE). It combines Next.js, RainbowKit, and WalletConnect for the frontend with a AWS Nitro Enclave TEE for key management and signing. This is a demo application based on recent work on key encumbrance techniques and TEE-based wallet platforms such as [Liquefaction](https://github.com/key-encumbrance/liquefaction).
 
 ## Features
 
@@ -27,8 +27,10 @@ git clone https://github.com/jayyu23/pass-wallet-app
 # Install frontend dependencies
 npm install
 
-# Install enclave dependencies
-cd enclave-kms
+# Install Python enclave dependencies
+cd py-kms-sim
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 cd ..
 ```
@@ -41,7 +43,7 @@ NEXT_PUBLIC_PROJECT_ID=your_walletconnect_project_id
 DATABASE_URL="file:./dev.db"
 ```
 
-Create `enclave-kms/.env`:
+Create `py-kms-sim/.env`:
 ```
 ENCLAVE_SECRET=your_secure_enclave_secret
 ```
@@ -53,16 +55,20 @@ npx prisma db push
 
 5. **Start the services**
 
-In one terminal:
+Run backend:
+
+See `nitro-enclave` folder for instructions to setup AWS Nitro server
+
+For Flask simulation of enclave, run:
+```bash
+npm run enclave-py
+```
+
+Run frontend:
 ```bash
 npm run dev
 ```
 
-In another terminal:
-```bash
-cd enclave-kms
-python enclave_api.py
-```
 
 Visit `http://localhost:3000` to use the application.
 
@@ -76,9 +82,11 @@ Visit `http://localhost:3000` to use the application.
 │   ├── pages/           # Next.js pages & API routes
 │   ├── styles/          # CSS modules
 │   └── types/           # TypeScript definitions
-├── enclave-kms/         # Key management system
+├── py-kms-sim/          # Python Key Management System Simulation
 │   ├── enclave_api.py   # REST API endpoints
-│   └── enclave_kms.py   # Core KMS logic
+│   ├── enclave_kms.py   # Core KMS logic
+│   └── venv/            # Python virtual environment
+├── nitro-enclave/       # AWS Nitro Enclave implementation
 └── prisma/              # Database schema
 ```
 
@@ -86,7 +94,7 @@ Visit `http://localhost:3000` to use the application.
 
 - **Frontend**: Next.js + RainbowKit for wallet connections and UI
 - **Backend**: Next.js API routes for business logic
-- **Enclave**: Python service simulating a TEE for key operations
+- **Enclave**: AWS Nitro Enclave (nitro-enclave) or Python service simulating a TEE for key operations (py-kms-sim)
 - **Database**: SQLite via Prisma for wallet metadata
 
 
