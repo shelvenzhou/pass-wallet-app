@@ -1,0 +1,9 @@
+# Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# This file is only necessary for building the client inside the TEE.
+# Not used in PASS project, but kept for reference.
+FROM alpine:latest
+COPY nitro-enclave .
+CMD ["./nitro-enclave", "client", "--cid", "3",  "--port", "5005"]
+

@@ -56,7 +56,7 @@ enclave-kms/keystore.json
 enclave-kms/venv/
 enclave-kms/__pycache__
 
-# rust nitro-rs
-nitro-rs/target/
-nitro-rs/keystore.json
-target/
+# nitro-enclave
+nitro-enclave/target/
+nitro-enclave/nitro_enclave_*.eif
+nitro-enclave/nitro-enclave
