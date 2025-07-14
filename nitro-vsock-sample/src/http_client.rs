@@ -36,7 +36,9 @@ struct ErrorResponse {
     error: String,
 }
 
+// Command: Generate account
 async fn generate_handler(Json(_args): Json<Option<serde_json::Value>>) -> Result<JsonResponse<GenerateResponse>, (StatusCode, JsonResponse<ErrorResponse>)> {
+    println!("Generating account");
     let cid = std::env::var("ENCLAVE_CID").unwrap_or_else(|_| "19".to_string()).parse::<u32>()
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
             error: "Invalid ENCLAVE_CID".to_string(),
@@ -68,6 +70,7 @@ async fn generate_handler(Json(_args): Json<Option<serde_json::Value>>) -> Resul
     }
 }
 
+// Command: List addresses
 async fn addresses_handler() -> Result<JsonResponse<Vec<String>>, (StatusCode, JsonResponse<ErrorResponse>)> {
     let cid = std::env::var("ENCLAVE_CID").unwrap_or_else(|_| "19".to_string()).parse::<u32>()
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
@@ -79,7 +82,6 @@ async fn addresses_handler() -> Result<JsonResponse<Vec<String>>, (StatusCode, J
     let command = serde_json::json!({
         "List": null
     });
-    
     match send_command_to_enclave(cid, port, &command.to_string()).await {
         Ok(response) => {
             if let Some(data) = response.data {
@@ -134,9 +136,12 @@ async fn sign_handler(Json(request): Json<SignRequest>) -> Result<JsonResponse<S
     }
 }
 
+// Send command to enclave and receive response
 async fn send_command_to_enclave(cid: u32, port: u32, command: &str) -> Result<Response, String> {
     let vsocket = vsock_connect(cid, port)?;
     let fd = vsocket.as_raw_fd();
+
+    println!("Sending command to enclave: {}", command);
 
     // Send command to enclave
     let buf = command.as_bytes();

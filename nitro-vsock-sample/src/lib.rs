@@ -84,22 +84,25 @@ pub fn client(args: ClientArgs) -> Result<(), String> {
     let vsocket = vsock_connect(args.cid, args.port)?;
     let fd = vsocket.as_raw_fd();
 
-    // Send JSON keygen command
-    let data = serde_json::json!({"Keygen": null}).to_string();
-    let buf = data.as_bytes();
-    let len: u64 = buf.len().try_into().map_err(|err| format!("{:?}", err))?;
-    send_u64(fd, len)?;
-    send_loop(fd, buf, len)?;
-    println!("Sent: {}", data);
+    // // Send JSON keygen command
+    // let data = serde_json::json!({"Keygen": null}).to_string();
+    // let buf = data.as_bytes();
+    // let len: u64 = buf.len().try_into().map_err(|err| format!("{:?}", err))?;
+    // send_u64(fd, len)?;
+    // send_loop(fd, buf, len)?;
+    // println!("Sent: {}", data);
 
-    // Wait for and receive the server's response
-    let mut response_buf = [0u8; BUF_MAX_LEN];
-    let response_len = recv_u64(fd)?;
-    recv_loop(fd, &mut response_buf, response_len)?;
+    // // Wait for and receive the server's response
+    // let mut response_buf = [0u8; BUF_MAX_LEN];
+    // let response_len = recv_u64(fd)?;
+    // recv_loop(fd, &mut response_buf, response_len)?;
     
-    let response = String::from_utf8(response_buf[..response_len as usize].to_vec())
-        .map_err(|err| format!("The received bytes are not UTF-8: {:?}", err))?;
-    println!("Received response: {}", response);
+    // let response = String::from_utf8(response_buf[..response_len as usize].to_vec())
+    //     .map_err(|err| format!("The received bytes are not UTF-8: {:?}", err))?;
+    // println!("Received response: {}", response);
+    println!("Running http server");
+    
+
 
     Ok(())
 }
