@@ -1,13 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::convert::TryInto;
 use std::sync::{Arc, Mutex};
 use anyhow::{Result, anyhow};
-use k256::{SecretKey, PublicKey, ecdsa::{SigningKey}};
-use k256::elliptic_curve::sec1::ToEncodedPoint;
-use rand::RngCore;
-use sha3::{Keccak256, Digest};
-use hex;
+use crate::key_manager::EnclaveKMS;
 
 /// Asset type identifier (e.g., "ETH", "USDC", etc.)
 pub type AssetType = String;
@@ -21,21 +16,61 @@ pub type DepositId = String;
 /// External destination address for withdrawals
 pub type ExternalDestination = String;
 
-/// Ethereum Address (EOA)
-pub type EthereumAddress = String;
+/// Wallet address (unique identifier for each PASS wallet)
+pub type WalletAddress = String;
+
+/// Token type matching the database schema
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TokenType {
+    ETH,
+    ERC20,
+    ERC721,
+    ERC1155,
+}
+
+/// Asset information matching the database schema
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Asset {
+    pub token_type: TokenType,
+    pub contract_address: Option<String>,
+    pub token_id: Option<String>,
+    pub symbol: String,
+    pub name: String,
+    pub decimals: u32,
+}
+
+/// Subaccount within a wallet
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Subaccount {
+    pub id: String,
+    pub label: String,
+    pub address: String,
+}
+
+/// Balance for a subaccount-asset pair
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubaccountBalance {
+    pub subaccount_id: String,
+    pub asset_id: String,
+    pub amount: u64,
+}
 
 /// Deposit entry in the inbox
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Deposit {
-    pub asset: AssetType,
+    pub asset_id: String,
     pub amount: u64,
     pub deposit_id: DepositId,
+    pub transaction_hash: String,
+    pub block_number: String,
+    pub from_address: String,
+    pub to_address: String,
 }
 
 /// Outbox entry for withdrawals
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutboxEntry {
-    pub asset: AssetType,
+    pub asset_id: String,
     pub amount: u64,
     pub external_destination: ExternalDestination,
     pub nonce: u64,
@@ -44,9 +79,9 @@ pub struct OutboxEntry {
 /// Transaction operation types for provenance history
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TransactionOperation {
-    Claim { asset: AssetType, amount: u64, deposit_id: DepositId, user: UserId },
-    Transfer { asset: AssetType, amount: u64, from: UserId, to: UserId },
-    Withdraw { asset: AssetType, amount: u64, user: UserId, destination: ExternalDestination },
+    Claim { asset_id: String, amount: u64, deposit_id: DepositId, subaccount_id: String },
+    Transfer { asset_id: String, amount: u64, from_subaccount: String, to_subaccount: String },
+    Withdraw { asset_id: String, amount: u64, subaccount_id: String, destination: ExternalDestination },
 }
 
 /// Provenance history entry
@@ -57,105 +92,92 @@ pub struct ProvenanceRecord {
     pub block_number: Option<u64>,
 }
 
-/// Global state of the PASS wallet
+/// Individual PASS wallet state
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PassWalletState {
-    /// Public key/address (EOA)
-    pub pk: EthereumAddress,
-    /// Private key (stored in TEE)
-    pub sk: String,
-    /// Global nonce for on-chain transactions
-    pub v: u64,
-    /// Inbox: set of unclaimed deposits
+    pub address: WalletAddress,
+    pub name: String,
+    pub owner: String,
+    pub nonce: u64,
     pub inbox: Vec<Deposit>,
-    /// Outbox: FIFO queue for withdrawals
     pub outbox: VecDeque<OutboxEntry>,
-    /// Asset Ledger: internal map L[user][asset] ∈ Z≥0
-    pub ledger: HashMap<UserId, HashMap<AssetType, u64>>,
-    /// Provenance History: list of transaction records
+    pub assets: HashMap<String, Asset>,
+    pub subaccounts: HashMap<String, Subaccount>,
+    pub balances: HashMap<String, u64>, // subaccount_id:asset_id -> amount
     pub history: Vec<ProvenanceRecord>,
-    /// Creator of the wallet
-    pub creator: UserId,
+    pub created_at: u64,
 }
 
 impl PassWalletState {
-    /// Create a new PASS wallet instance
-    pub fn create_pass_wallet(creator: UserId) -> Result<Self> {
-        // Generate TEE key pair
-        let mut rng = rand::thread_rng();
-        let mut private_key_bytes = [0u8; 32];
-        rng.fill_bytes(&mut private_key_bytes);
-        
-        let secret_key = SecretKey::from_bytes(&private_key_bytes.into())?;
-        let public_key = secret_key.public_key();
-        
-        // Generate Ethereum address from public key
-        let pk = Self::public_key_to_address(&public_key);
-        let sk = format!("0x{}", hex::encode(private_key_bytes));
-        
-        Ok(PassWalletState {
-            pk,
-            sk,
-            v: 0,
+    /// Create a new PASS wallet state
+    pub fn new(address: WalletAddress, name: String, owner: String) -> Self {
+        PassWalletState {
+            address,
+            name,
+            owner,
+            nonce: 0,
             inbox: Vec::new(),
             outbox: VecDeque::new(),
-            ledger: HashMap::new(),
+            assets: HashMap::new(),
+            subaccounts: HashMap::new(),
+            balances: HashMap::new(),
             history: Vec::new(),
-            creator,
-        })
+            created_at: Self::get_timestamp(),
+        }
     }
-    
-    /// Convert public key to Ethereum address
-    fn public_key_to_address(public_key: &PublicKey) -> String {
-        let encoded = public_key.to_encoded_point(false);
-        let public_key_bytes = encoded.as_bytes();
-        
-        // Skip the 0x04 prefix for uncompressed public key
-        let hash = Keccak256::digest(&public_key_bytes[1..]);
-        let address = &hash[12..];
-        format!("0x{}", hex::encode(address))
+
+    /// Add an asset to the wallet
+    pub fn add_asset(&mut self, asset_id: String, asset: Asset) {
+        self.assets.insert(asset_id, asset);
     }
-    
+
+    /// Add a subaccount to the wallet
+    pub fn add_subaccount(&mut self, subaccount: Subaccount) {
+        self.subaccounts.insert(subaccount.id.clone(), subaccount);
+    }
+
+    /// Get balance for a subaccount-asset pair
+    pub fn get_balance(&self, subaccount_id: &str, asset_id: &str) -> u64 {
+        let balance_key = format!("{}:{}", subaccount_id, asset_id);
+        self.balances.get(&balance_key).copied().unwrap_or(0)
+    }
+
+    /// Set balance for a subaccount-asset pair
+    fn set_balance(&mut self, subaccount_id: &str, asset_id: &str, amount: u64) {
+        let balance_key = format!("{}:{}", subaccount_id, asset_id);
+        self.balances.insert(balance_key, amount);
+    }
+
     /// Add external deposit to inbox
-    pub fn inbox_deposit(&mut self, asset: AssetType, amount: u64, deposit_id: DepositId) -> Result<()> {
+    pub fn inbox_deposit(&mut self, deposit: Deposit) -> Result<()> {
         // Check if deposit ID already exists
-        if self.inbox.iter().any(|d| d.deposit_id == deposit_id) {
+        if self.inbox.iter().any(|d| d.deposit_id == deposit.deposit_id) {
             return Err(anyhow!("Deposit ID already exists"));
         }
-        
-        let deposit = Deposit {
-            asset,
-            amount,
-            deposit_id,
-        };
         
         self.inbox.push(deposit);
         Ok(())
     }
-    
+
     /// Claim deposit from inbox
-    pub fn claim_inbox(&mut self, asset: AssetType, amount: u64, deposit_id: DepositId, user: UserId) -> Result<()> {
+    pub fn claim_inbox(&mut self, deposit_id: &str, subaccount_id: &str) -> Result<()> {
         // Find and remove the deposit from inbox
-        let deposit_index = self.inbox.iter().position(|d| 
-            d.asset == asset && d.amount == amount && d.deposit_id == deposit_id
-        ).ok_or_else(|| anyhow!("Deposit not found in inbox"))?;
+        let deposit_index = self.inbox.iter().position(|d| d.deposit_id == deposit_id)
+            .ok_or_else(|| anyhow!("Deposit not found in inbox"))?;
         
-        let _deposit = self.inbox.remove(deposit_index);
+        let deposit = self.inbox.remove(deposit_index);
         
-        // Update ledger
-        self.ledger.entry(user.clone())
-            .or_insert_with(HashMap::new)
-            .entry(asset.clone())
-            .and_modify(|balance| *balance += amount)
-            .or_insert(amount);
+        // Update balance
+        let current_balance = self.get_balance(subaccount_id, &deposit.asset_id);
+        self.set_balance(subaccount_id, &deposit.asset_id, current_balance + deposit.amount);
         
         // Add to provenance history
         self.history.push(ProvenanceRecord {
             operation: TransactionOperation::Claim {
-                asset,
-                amount,
-                deposit_id,
-                user,
+                asset_id: deposit.asset_id,
+                amount: deposit.amount,
+                deposit_id: deposit.deposit_id,
+                subaccount_id: subaccount_id.to_string(),
             },
             timestamp: Self::get_timestamp(),
             block_number: None,
@@ -163,50 +185,33 @@ impl PassWalletState {
         
         Ok(())
     }
-    
-    /// Check if a user is allowed to perform a transaction
-    pub fn check_allow(&self, user: &UserId, asset: &AssetType, amount: u64) -> bool {
-        // For now, implement basic balance check
-        // This can be extended with more sophisticated provenance-based checks
-        self.ledger.get(user)
-            .and_then(|user_assets| user_assets.get(asset))
-            .map(|balance| *balance >= amount)
-            .unwrap_or(false)
+
+    /// Check if a subaccount is allowed to perform a transaction
+    pub fn check_allow(&self, subaccount_id: &str, asset_id: &str, amount: u64) -> bool {
+        self.get_balance(subaccount_id, asset_id) >= amount
     }
-    
-    /// Internal transfer between users
-    pub fn internal_transfer(&mut self, asset: AssetType, amount: u64, from: UserId, to: UserId) -> Result<()> {
-        // Check if sender has sufficient balance and is allowed
-        if !self.check_allow(&from, &asset, amount) {
-            return Err(anyhow!("Insufficient balance or not allowed"));
-        }
-        
-        // Get sender's balance
-        let sender_balance = self.ledger.get_mut(&from)
-            .and_then(|user_assets| user_assets.get_mut(&asset))
-            .ok_or_else(|| anyhow!("Sender asset not found"))?;
-        
-        if *sender_balance < amount {
+
+    /// Internal transfer between subaccounts
+    pub fn internal_transfer(&mut self, asset_id: &str, amount: u64, from_subaccount: &str, to_subaccount: &str) -> Result<()> {
+        // Check if sender has sufficient balance
+        if !self.check_allow(from_subaccount, asset_id, amount) {
             return Err(anyhow!("Insufficient balance"));
         }
         
-        // Update sender's balance
-        *sender_balance -= amount;
+        // Update balances
+        let from_balance = self.get_balance(from_subaccount, asset_id);
+        let to_balance = self.get_balance(to_subaccount, asset_id);
         
-        // Update receiver's balance
-        self.ledger.entry(to.clone())
-            .or_insert_with(HashMap::new)
-            .entry(asset.clone())
-            .and_modify(|balance| *balance += amount)
-            .or_insert(amount);
+        self.set_balance(from_subaccount, asset_id, from_balance - amount);
+        self.set_balance(to_subaccount, asset_id, to_balance + amount);
         
         // Add to provenance history
         self.history.push(ProvenanceRecord {
             operation: TransactionOperation::Transfer {
-                asset,
+                asset_id: asset_id.to_string(),
                 amount,
-                from,
-                to,
+                from_subaccount: from_subaccount.to_string(),
+                to_subaccount: to_subaccount.to_string(),
             },
             timestamp: Self::get_timestamp(),
             block_number: None,
@@ -214,41 +219,33 @@ impl PassWalletState {
         
         Ok(())
     }
-    
+
     /// Withdraw to external destination
-    pub fn withdraw(&mut self, asset: AssetType, amount: u64, user: UserId, external_destination: ExternalDestination) -> Result<()> {
-        // Check if user has sufficient balance and is allowed
-        if !self.check_allow(&user, &asset, amount) {
-            return Err(anyhow!("Insufficient balance or not allowed"));
-        }
-        
-        // Get user's balance
-        let user_balance = self.ledger.get_mut(&user)
-            .and_then(|user_assets| user_assets.get_mut(&asset))
-            .ok_or_else(|| anyhow!("User asset not found"))?;
-        
-        if *user_balance < amount {
+    pub fn withdraw(&mut self, asset_id: &str, amount: u64, subaccount_id: &str, external_destination: &str) -> Result<()> {
+        // Check if subaccount has sufficient balance
+        if !self.check_allow(subaccount_id, asset_id, amount) {
             return Err(anyhow!("Insufficient balance"));
         }
         
-        // Update user's balance
-        *user_balance -= amount;
+        // Update balance
+        let current_balance = self.get_balance(subaccount_id, asset_id);
+        self.set_balance(subaccount_id, asset_id, current_balance - amount);
         
         // Add to outbox
         self.outbox.push_back(OutboxEntry {
-            asset: asset.clone(),
+            asset_id: asset_id.to_string(),
             amount,
-            external_destination: external_destination.clone(),
-            nonce: self.v,
+            external_destination: external_destination.to_string(),
+            nonce: self.nonce,
         });
         
         // Add to provenance history
         self.history.push(ProvenanceRecord {
             operation: TransactionOperation::Withdraw {
-                asset,
+                asset_id: asset_id.to_string(),
                 amount,
-                user,
-                destination: external_destination,
+                subaccount_id: subaccount_id.to_string(),
+                destination: external_destination.to_string(),
             },
             timestamp: Self::get_timestamp(),
             block_number: None,
@@ -256,92 +253,52 @@ impl PassWalletState {
         
         Ok(())
     }
-    
-    /// Sign GSM (Generic State Machine) operations
-    pub fn sign_gsm(&self, domain: &str, message: &str, _user: &UserId) -> Result<String> {
-        // Check if user has signing rights (for now, allow all users)
-        // This can be extended with more sophisticated access control
-        
-        // Create signing key from private key
-        let private_key_clean = self.sk.strip_prefix("0x").unwrap_or(&self.sk);
-        let private_key_bytes = hex::decode(private_key_clean)?;
-        if private_key_bytes.len() != 32 {
-            return Err(anyhow!("Invalid private key length"));
-        }
-        let private_key_array: [u8; 32] = private_key_bytes.try_into().unwrap();
-        let secret_key = SecretKey::from_bytes(&private_key_array.into())?;
-        let signing_key = SigningKey::from(secret_key);
-        
-        // Create message hash
-        let full_message = format!("{}:{}", domain, message);
-        let message_hash = self.hash_message(&full_message);
-        
-        // Sign the message
-        let (signature, recovery_id) = signing_key.sign_prehash_recoverable(&message_hash)?;
-        
-        // Combine signature and recovery ID
-        let mut signature_bytes = signature.to_bytes().to_vec();
-        signature_bytes.push(recovery_id.to_byte() + 27);
-        
-        Ok(format!("0x{}", hex::encode(signature_bytes)))
-    }
-    
+
     /// Process outbox (periodic or on-demand)
     pub fn process_outbox(&mut self) -> Result<Vec<OutboxEntry>> {
         let mut processed = Vec::new();
         
-        // Process all items in outbox
         while let Some(entry) = self.outbox.pop_front() {
-            // In a real implementation, this would:
-            // 1. Build transaction τ: transfer entry.amount of entry.asset to entry.external_destination
-            // 2. Sign transaction with private key
-            // 3. Broadcast transaction
-            // 4. Increment nonce
-            
             processed.push(entry);
-            self.v += 1;
+            self.nonce += 1;
         }
         
         Ok(processed)
     }
-    
-    /// Get user's balance for a specific asset
-    pub fn get_balance(&self, user: &UserId, asset: &AssetType) -> u64 {
-        self.ledger.get(user)
-            .and_then(|user_assets| user_assets.get(asset))
-            .copied()
-            .unwrap_or(0)
+
+    /// Get all balances for a subaccount
+    pub fn get_subaccount_balances(&self, subaccount_id: &str) -> HashMap<String, u64> {
+        self.balances.iter()
+            .filter_map(|(key, amount)| {
+                if let Some((sub_id, asset_id)) = key.split_once(':') {
+                    if sub_id == subaccount_id {
+                        Some((asset_id.to_string(), *amount))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
-    
-    /// Get all balances for a user
-    pub fn get_user_balances(&self, user: &UserId) -> HashMap<AssetType, u64> {
-        self.ledger.get(user)
-            .cloned()
-            .unwrap_or_default()
-    }
-    
-    /// Get current state summary
+
+    /// Get wallet state summary
     pub fn get_state_summary(&self) -> serde_json::Value {
         serde_json::json!({
-            "address": self.pk,
-            "nonce": self.v,
+            "address": self.address,
+            "name": self.name,
+            "owner": self.owner,
+            "nonce": self.nonce,
             "inbox_count": self.inbox.len(),
             "outbox_count": self.outbox.len(),
-            "user_count": self.ledger.len(),
+            "assets_count": self.assets.len(),
+            "subaccounts_count": self.subaccounts.len(),
             "history_count": self.history.len(),
-            "creator": self.creator
+            "created_at": self.created_at
         })
     }
-    
-    /// Helper function to hash messages
-    fn hash_message(&self, message: &str) -> [u8; 32] {
-        let prefix = format!("\x19Ethereum Signed Message:\n{}", message.len());
-        let mut hasher = Keccak256::new();
-        hasher.update(prefix.as_bytes());
-        hasher.update(message.as_bytes());
-        hasher.finalize().into()
-    }
-    
+
     /// Helper function to get current timestamp
     fn get_timestamp() -> u64 {
         std::time::SystemTime::now()
@@ -351,158 +308,248 @@ impl PassWalletState {
     }
 }
 
-/// Thread-safe PASS wallet instance
-pub struct PassWallet {
-    state: Arc<Mutex<PassWalletState>>,
+/// PASS Wallet Manager - manages multiple PASS wallets
+pub struct PassWalletManager {
+    kms: Arc<Mutex<EnclaveKMS>>,
+    wallets: Arc<Mutex<HashMap<WalletAddress, PassWalletState>>>,
 }
 
-impl PassWallet {
-    /// Create new PASS wallet
-    pub fn new(creator: UserId) -> Result<Self> {
-        let state = PassWalletState::create_pass_wallet(creator)?;
-        Ok(PassWallet {
-            state: Arc::new(Mutex::new(state)),
-        })
+impl PassWalletManager {
+    /// Create a new PASS wallet manager
+    pub fn new(kms: Arc<Mutex<EnclaveKMS>>) -> Self {
+        PassWalletManager {
+            kms,
+            wallets: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
-    
+
+    /// Create a new PASS wallet
+    pub fn create_wallet(&self, name: String, owner: String) -> Result<WalletAddress> {
+        // Generate a new Ethereum account using the existing KMS
+        let account = {
+            let mut kms = self.kms.lock().unwrap();
+            kms.handle_keygen()?
+        };
+
+        let address = account.address.clone();
+        let wallet_state = PassWalletState::new(address.clone(), name, owner);
+
+        // Store the wallet
+        {
+            let mut wallets = self.wallets.lock().unwrap();
+            wallets.insert(address.clone(), wallet_state);
+        }
+
+        Ok(address)
+    }
+
+    /// Get a wallet by address
+    pub fn get_wallet(&self, address: &str) -> Option<PassWalletState> {
+        let wallets = self.wallets.lock().unwrap();
+        wallets.get(address).cloned()
+    }
+
+    /// Update a wallet
+    pub fn update_wallet(&self, address: &str, wallet_state: PassWalletState) -> Result<()> {
+        let mut wallets = self.wallets.lock().unwrap();
+        if wallets.contains_key(address) {
+            wallets.insert(address.to_string(), wallet_state);
+            Ok(())
+        } else {
+            Err(anyhow!("Wallet not found"))
+        }
+    }
+
+    /// List all wallet addresses
+    pub fn list_wallets(&self) -> Vec<WalletAddress> {
+        let wallets = self.wallets.lock().unwrap();
+        wallets.keys().cloned().collect()
+    }
+
+    /// Sign a message using a wallet's private key
+    pub fn sign_message(&self, wallet_address: &str, domain: &str, message: &str) -> Result<String> {
+        // Use the existing KMS to sign the message
+        let kms = self.kms.lock().unwrap();
+        let full_message = format!("{}:{}", domain, message);
+        
+        match kms.sign_message(&full_message, wallet_address)? {
+            Some(signature) => Ok(signature),
+            None => Err(anyhow!("Failed to sign message - wallet not found")),
+        }
+    }
+
     /// Execute inbox deposit
-    pub fn inbox_deposit(&self, asset: AssetType, amount: u64, deposit_id: DepositId) -> Result<()> {
-        let mut state = self.state.lock().unwrap();
-        state.inbox_deposit(asset, amount, deposit_id)
+    pub fn inbox_deposit(&self, wallet_address: &str, deposit: Deposit) -> Result<()> {
+        let mut wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        wallet_state.inbox_deposit(deposit)?;
+        self.update_wallet(wallet_address, wallet_state)?;
+        Ok(())
     }
-    
+
     /// Execute claim inbox
-    pub fn claim_inbox(&self, asset: AssetType, amount: u64, deposit_id: DepositId, user: UserId) -> Result<()> {
-        let mut state = self.state.lock().unwrap();
-        state.claim_inbox(asset, amount, deposit_id, user)
+    pub fn claim_inbox(&self, wallet_address: &str, deposit_id: &str, subaccount_id: &str) -> Result<()> {
+        let mut wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        wallet_state.claim_inbox(deposit_id, subaccount_id)?;
+        self.update_wallet(wallet_address, wallet_state)?;
+        Ok(())
     }
-    
+
     /// Execute internal transfer
-    pub fn internal_transfer(&self, asset: AssetType, amount: u64, from: UserId, to: UserId) -> Result<()> {
-        let mut state = self.state.lock().unwrap();
-        state.internal_transfer(asset, amount, from, to)
+    pub fn internal_transfer(&self, wallet_address: &str, asset_id: &str, amount: u64, from_subaccount: &str, to_subaccount: &str) -> Result<()> {
+        let mut wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        wallet_state.internal_transfer(asset_id, amount, from_subaccount, to_subaccount)?;
+        self.update_wallet(wallet_address, wallet_state)?;
+        Ok(())
     }
-    
+
     /// Execute withdrawal
-    pub fn withdraw(&self, asset: AssetType, amount: u64, user: UserId, external_destination: ExternalDestination) -> Result<()> {
-        let mut state = self.state.lock().unwrap();
-        state.withdraw(asset, amount, user, external_destination)
+    pub fn withdraw(&self, wallet_address: &str, asset_id: &str, amount: u64, subaccount_id: &str, destination: &str) -> Result<()> {
+        let mut wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        wallet_state.withdraw(asset_id, amount, subaccount_id, destination)?;
+        self.update_wallet(wallet_address, wallet_state)?;
+        Ok(())
     }
-    
-    /// Sign GSM operation
-    pub fn sign_gsm(&self, domain: &str, message: &str, user: &UserId) -> Result<String> {
-        let state = self.state.lock().unwrap();
-        state.sign_gsm(domain, message, user)
-    }
-    
+
     /// Process outbox
-    pub fn process_outbox(&self) -> Result<Vec<OutboxEntry>> {
-        let mut state = self.state.lock().unwrap();
-        state.process_outbox()
+    pub fn process_outbox(&self, wallet_address: &str) -> Result<Vec<OutboxEntry>> {
+        let mut wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        let processed = wallet_state.process_outbox()?;
+        self.update_wallet(wallet_address, wallet_state)?;
+        Ok(processed)
     }
-    
-    /// Get user balance
-    pub fn get_balance(&self, user: &UserId, asset: &AssetType) -> u64 {
-        let state = self.state.lock().unwrap();
-        state.get_balance(user, asset)
-    }
-    
-    /// Get all user balances
-    pub fn get_user_balances(&self, user: &UserId) -> HashMap<AssetType, u64> {
-        let state = self.state.lock().unwrap();
-        state.get_user_balances(user)
-    }
-    
-    /// Get state summary
-    pub fn get_state_summary(&self) -> serde_json::Value {
-        let state = self.state.lock().unwrap();
-        state.get_state_summary()
-    }
-    
-    /// Get wallet address
-    pub fn get_address(&self) -> String {
-        let state = self.state.lock().unwrap();
-        state.pk.clone()
-    }
-}
 
-// Global PASS wallet instance
-lazy_static::lazy_static! {
-    static ref PASS_WALLET: Option<PassWallet> = None;
-}
+    /// Add asset to wallet
+    pub fn add_asset(&self, wallet_address: &str, asset_id: String, asset: Asset) -> Result<()> {
+        let mut wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        wallet_state.add_asset(asset_id, asset);
+        self.update_wallet(wallet_address, wallet_state)?;
+        Ok(())
+    }
 
-/// Initialize the global PASS wallet
-pub fn initialize_pass_wallet(creator: UserId) -> Result<()> {
-    let _wallet = PassWallet::new(creator)?;
-    // In a real implementation, you would properly initialize the global state
-    // For now, we'll return the wallet instance
-    Ok(())
-}
+    /// Add subaccount to wallet
+    pub fn add_subaccount(&self, wallet_address: &str, subaccount: Subaccount) -> Result<()> {
+        let mut wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        wallet_state.add_subaccount(subaccount);
+        self.update_wallet(wallet_address, wallet_state)?;
+        Ok(())
+    }
 
-/// Get the global PASS wallet instance
-pub fn get_pass_wallet() -> Option<&'static PassWallet> {
-    PASS_WALLET.as_ref()
+    /// Get balance for a subaccount
+    pub fn get_balance(&self, wallet_address: &str, subaccount_id: &str, asset_id: &str) -> Result<u64> {
+        let wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        Ok(wallet_state.get_balance(subaccount_id, asset_id))
+    }
+
+    /// Get all balances for a subaccount
+    pub fn get_subaccount_balances(&self, wallet_address: &str, subaccount_id: &str) -> Result<HashMap<String, u64>> {
+        let wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        Ok(wallet_state.get_subaccount_balances(subaccount_id))
+    }
+
+    /// Get wallet state summary
+    pub fn get_wallet_state(&self, wallet_address: &str) -> Result<serde_json::Value> {
+        let wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        Ok(wallet_state.get_state_summary())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+    use crate::key_manager::EnclaveKMS;
+
     #[test]
-    fn test_create_pass_wallet() {
-        let wallet = PassWalletState::create_pass_wallet("creator1".to_string()).unwrap();
-        assert_eq!(wallet.creator, "creator1");
-        assert_eq!(wallet.v, 0);
-        assert!(wallet.inbox.is_empty());
-        assert!(wallet.outbox.is_empty());
-        assert!(wallet.ledger.is_empty());
-        assert!(wallet.history.is_empty());
+    fn test_create_wallet_manager() {
+        let kms = Arc::new(Mutex::new(EnclaveKMS::new("test_secret").unwrap()));
+        let manager = PassWalletManager::new(kms);
+        
+        let wallet_address = manager.create_wallet("Test Wallet".to_string(), "alice".to_string()).unwrap();
+        assert!(!wallet_address.is_empty());
+        
+        let wallet_state = manager.get_wallet(&wallet_address).unwrap();
+        assert_eq!(wallet_state.name, "Test Wallet");
+        assert_eq!(wallet_state.owner, "alice");
     }
-    
+
     #[test]
-    fn test_inbox_deposit_and_claim() {
-        let mut wallet = PassWalletState::create_pass_wallet("creator1".to_string()).unwrap();
+    fn test_multiple_wallets() {
+        let kms = Arc::new(Mutex::new(EnclaveKMS::new("test_secret").unwrap()));
+        let manager = PassWalletManager::new(kms);
         
-        // Add deposit to inbox
-        wallet.inbox_deposit("ETH".to_string(), 1000, "deposit1".to_string()).unwrap();
-        assert_eq!(wallet.inbox.len(), 1);
+        let wallet1 = manager.create_wallet("Wallet 1".to_string(), "alice".to_string()).unwrap();
+        let wallet2 = manager.create_wallet("Wallet 2".to_string(), "bob".to_string()).unwrap();
         
-        // Claim deposit
-        wallet.claim_inbox("ETH".to_string(), 1000, "deposit1".to_string(), "user1".to_string()).unwrap();
-        assert_eq!(wallet.inbox.len(), 0);
-        assert_eq!(wallet.get_balance(&"user1".to_string(), &"ETH".to_string()), 1000);
-        assert_eq!(wallet.history.len(), 1);
+        assert_ne!(wallet1, wallet2);
+        
+        let wallets = manager.list_wallets();
+        assert_eq!(wallets.len(), 2);
+        assert!(wallets.contains(&wallet1));
+        assert!(wallets.contains(&wallet2));
     }
-    
+
     #[test]
-    fn test_internal_transfer() {
-        let mut wallet = PassWalletState::create_pass_wallet("creator1".to_string()).unwrap();
+    fn test_wallet_operations() {
+        let kms = Arc::new(Mutex::new(EnclaveKMS::new("test_secret").unwrap()));
+        let manager = PassWalletManager::new(kms);
         
-        // Setup initial balance
-        wallet.inbox_deposit("ETH".to_string(), 1000, "deposit1".to_string()).unwrap();
-        wallet.claim_inbox("ETH".to_string(), 1000, "deposit1".to_string(), "user1".to_string()).unwrap();
+        let wallet_address = manager.create_wallet("Test Wallet".to_string(), "alice".to_string()).unwrap();
         
-        // Transfer
-        wallet.internal_transfer("ETH".to_string(), 500, "user1".to_string(), "user2".to_string()).unwrap();
+        // Add asset
+        let asset = Asset {
+            token_type: TokenType::ETH,
+            contract_address: None,
+            token_id: None,
+            symbol: "ETH".to_string(),
+            name: "Ethereum".to_string(),
+            decimals: 18,
+        };
+        manager.add_asset(&wallet_address, "eth".to_string(), asset).unwrap();
         
-        assert_eq!(wallet.get_balance(&"user1".to_string(), &"ETH".to_string()), 500);
-        assert_eq!(wallet.get_balance(&"user2".to_string(), &"ETH".to_string()), 500);
-        assert_eq!(wallet.history.len(), 2);
-    }
-    
-    #[test]
-    fn test_withdraw() {
-        let mut wallet = PassWalletState::create_pass_wallet("creator1".to_string()).unwrap();
+        // Add subaccount
+        let subaccount = Subaccount {
+            id: "sub1".to_string(),
+            label: "Main Account".to_string(),
+            address: "0x123...".to_string(),
+        };
+        manager.add_subaccount(&wallet_address, subaccount).unwrap();
         
-        // Setup initial balance
-        wallet.inbox_deposit("ETH".to_string(), 1000, "deposit1".to_string()).unwrap();
-        wallet.claim_inbox("ETH".to_string(), 1000, "deposit1".to_string(), "user1".to_string()).unwrap();
+        // Test deposit
+        let deposit = Deposit {
+            asset_id: "eth".to_string(),
+            amount: 1000,
+            deposit_id: "deposit1".to_string(),
+            transaction_hash: "0xabc...".to_string(),
+            block_number: "12345".to_string(),
+            from_address: "0x456...".to_string(),
+            to_address: wallet_address.clone(),
+        };
+        manager.inbox_deposit(&wallet_address, deposit).unwrap();
         
-        // Withdraw
-        wallet.withdraw("ETH".to_string(), 300, "user1".to_string(), "0x1234567890abcdef".to_string()).unwrap();
+        // Test claim
+        manager.claim_inbox(&wallet_address, "deposit1", "sub1").unwrap();
         
-        assert_eq!(wallet.get_balance(&"user1".to_string(), &"ETH".to_string()), 700);
-        assert_eq!(wallet.outbox.len(), 1);
-        assert_eq!(wallet.history.len(), 2);
+        // Check balance
+        let balance = manager.get_balance(&wallet_address, "sub1", "eth").unwrap();
+        assert_eq!(balance, 1000);
     }
 }

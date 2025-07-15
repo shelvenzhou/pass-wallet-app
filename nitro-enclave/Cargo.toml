@@ -12,9 +12,7 @@ path = "src/main.rs"
 name = "http-server"
 path = "src/http_main.rs"
 
-[[bin]]
-name = "test-pass-wallet"
-path = "src/bin/test_pass_wallet.rs"
+
 
 [dependencies]
 clap = "3.2"
