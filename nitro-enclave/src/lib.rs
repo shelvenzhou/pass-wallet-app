@@ -3,6 +3,8 @@ pub mod protocol_helpers;
 pub mod server_logic;
 pub mod utils;
 pub mod http_client;
+pub mod pass_logic;
+pub mod key_manager;
 
 use command_parser::{ClientArgs, ServerArgs};
 use protocol_helpers::{recv_loop, recv_u64, send_loop, send_u64};
