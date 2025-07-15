@@ -233,7 +233,7 @@ async fn sign_handler(Json(request): Json<SignRequest>) -> Result<JsonResponse<S
     }
 }
 
-// PASS Wallet HTTP handlers
+// ------------ PASS Wallet HTTP handlers ------------
 
 // Create PASS wallet
 async fn create_pass_wallet_handler(Json(request): Json<CreatePassWalletRequest>) -> Result<JsonResponse<serde_json::Value>, (StatusCode, JsonResponse<ErrorResponse>)> {
