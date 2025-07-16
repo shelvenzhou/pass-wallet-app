@@ -583,8 +583,9 @@ const AccountDetailsPage: NextPage = () => {
                 <h1 className={styles.title}>{accountDetails.name}</h1>
                 <div style={{ display: 'flex', gap: '12px' }}>
                   <button 
-                    style={buttonStyle}
+                    style={{...buttonStyle, opacity: 0.5}} // Disabled for now
                     onClick={() => setIsTransferModalOpen(true)}
+                    disabled={true}
                   >
                     PASS Transfer
                   </button>

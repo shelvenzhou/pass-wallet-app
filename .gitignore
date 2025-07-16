@@ -45,6 +45,8 @@ local
 .env.test.local
 .env.production.local
 
+*.log
+
 # vercel
 .vercel
 
