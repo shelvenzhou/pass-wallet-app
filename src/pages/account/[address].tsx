@@ -378,24 +378,34 @@ const AccountDetailsPage: NextPage = () => {
           if (transactionsResponse.ok) {
             const accountData = await transactionsResponse.json();
             console.log('Account data:', accountData);
+            console.log('Connected address:', connectedAddress);
             
             // The account API should return transactions in the expected format
             if (accountData.transactions && Array.isArray(accountData.transactions)) {
-              const mappedTransactions: InboxTransaction[] = accountData.transactions.map((tx: any) => ({
-                hash: tx.hash,
-                blockNumber: tx.blockNumber,
-                tokenType: tx.tokenType || 'ETH',
-                amount: tx.value,
-                fromAddress: tx.from,
-                toAddress: tx.to,
-                symbol: tx.tokenSymbol || 'ETH',
-                name: tx.tokenName || 'Ethereum',
-                decimals: parseInt(tx.tokenDecimal || '18'),
-                contractAddress: tx.contractAddress,
-                tokenId: tx.tokenID,
-                createdAt: new Date().toISOString(),
-                claimed: tx.claimed || false
-              }));
+              console.log('Raw transactions:', accountData.transactions);
+              
+              const mappedTransactions: InboxTransaction[] = accountData.transactions.map((tx: any) => {
+                const mapped = {
+                  hash: tx.hash,
+                  blockNumber: tx.blockNumber,
+                  tokenType: tx.tokenType || 'ETH',
+                  amount: tx.value,
+                  fromAddress: tx.from,
+                  toAddress: tx.to,
+                  symbol: tx.tokenSymbol || 'ETH',
+                  name: tx.tokenName || 'Ethereum',
+                  decimals: parseInt(tx.tokenDecimal || '18'),
+                  contractAddress: tx.contractAddress,
+                  tokenId: tx.tokenID,
+                  createdAt: new Date().toISOString(),
+                  claimed: tx.claimed || false
+                };
+                console.log('Mapped transaction:', mapped);
+                return mapped;
+              });
+              
+              console.log('All mapped transactions:', mappedTransactions);
+              console.log('Filtered transactions:', mappedTransactions.filter(tx => tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()));
               
               setInboxTransactions(mappedTransactions);
             } else {
@@ -419,7 +429,7 @@ const AccountDetailsPage: NextPage = () => {
     };
 
     fetchInboxTransactions();
-  }, [accountAddress]);
+  }, [accountAddress, connectedAddress]);
 
   const refreshInboxTransactions = async () => {
     if (!accountAddress) return;
@@ -1083,6 +1093,21 @@ const AccountDetailsPage: NextPage = () => {
 
                 {activeTab === 'inbox' && (
                   <div>
+                    {(() => {
+                      // Debug logging
+                      const filteredTransactions = inboxTransactions.filter(tx => tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase());
+                      console.log('UI Debug - All inbox transactions:', inboxTransactions);
+                      console.log('UI Debug - Connected address:', connectedAddress);
+                      console.log('UI Debug - Filtered transactions:', filteredTransactions);
+                      console.log('UI Debug - Filter condition:', inboxTransactions.map(tx => ({
+                        fromAddress: tx.fromAddress,
+                        connectedAddress: connectedAddress,
+                        matches: tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()
+                      })));
+                      
+                      return null;
+                    })()}
+                    
                     {isLoadingInbox ? (
                       <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>Loading transactions...</p>
                     ) : inboxTransactions.filter(tx => tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()).length === 0 ? (
