@@ -1085,18 +1085,18 @@ const AccountDetailsPage: NextPage = () => {
                   <div>
                     {isLoadingInbox ? (
                       <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>Loading transactions...</p>
-                    ) : inboxTransactions.filter(tx => tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()).length === 0 ? (
+                    ) : inboxTransactions.filter(tx => tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()).length === 0 ? (
                       <p style={{ color: '#666' }}>No incoming transactions from your connected wallet yet</p>
                     ) : (
                       <div style={{ overflowY: 'auto', maxHeight: '1200px' }}>
                         {inboxTransactions
-                          .filter(tx => tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase())
+                          .filter(tx => tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase())
                           .map((tx, index) => (
                           <div
                             key={tx.hash}
                             style={{
                               padding: '16px',
-                              borderBottom: index < inboxTransactions.filter(tx => tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()).length - 1 ? '1px solid #eaeaea' : 'none',
+                              borderBottom: index < inboxTransactions.filter(tx => tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()).length - 1 ? '1px solid #eaeaea' : 'none',
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'flex-start'
