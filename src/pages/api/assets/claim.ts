@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '../../../lib/prisma';
 import { TokenType } from '@prisma/client';
 
+const ENCLAVE_URL = process.env.ENCLAVE_URL || 'http://127.0.0.1:5000';
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<{ success: boolean } | { error: string }>
@@ -15,14 +17,7 @@ export default async function handler(
     console.log("claim api called");
     console.log(walletAddress, transactionHash, claimAddress);
 
-    const wallet = await prisma.passWallet.findUnique({
-      where: { address: walletAddress }
-    });
-
-    if (!wallet) {
-      return res.status(404).json({ error: 'Wallet not found' });
-    }
-    // Check if transaction exists
+    // Get transaction from database for reference
     const transaction = await prisma.inboxTransaction.findUnique({
       where: { transactionHash }
     });
@@ -39,76 +34,55 @@ export default async function handler(
     if (transaction.fromAddress.toLowerCase() !== claimAddress.toLowerCase()) {
       return res.status(400).json({ error: 'Transaction not from wallet' });
     }
-    // Get user subaccount
+
+    // Get or create subaccount ID
     let subaccount = await prisma.subaccount.findFirst({
-        where: {
-          walletId: wallet.id,
+      where: {
+        walletId: transaction.walletId,
+        address: claimAddress,
+      },
+    });
+
+    if (!subaccount) {
+      subaccount = await prisma.subaccount.create({
+        data: {
+          walletId: transaction.walletId,
           address: claimAddress,
+          label: `Auto-${claimAddress.slice(0, 6)}`,
         },
       });
-  
-      if (!subaccount) {
-        subaccount = await prisma.subaccount.create({
-          data: {
-            walletId: wallet.id,
-            address: claimAddress,
-            label: `Auto-${claimAddress.slice(0, 6)}`,
-          },
-        });
-      }
-      
-      await prisma.$transaction(async (tx) => {
-        // First, ensure the asset exists
-        const asset = await tx.asset.findUnique({
-          where: { id: transaction.assetId }
-        });
+    }
 
-        if (!asset) {
-          throw new Error(`Asset with id ${transaction.assetId} not found`);
-        }
+    // Call enclave to perform the claim
+    const enclaveResponse = await fetch(`${ENCLAVE_URL}/pass/wallets/claims`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        wallet_address: walletAddress,
+        deposit_id: transactionHash, // Use transaction hash as deposit ID
+        subaccount_id: subaccount.id,
+      }),
+    });
 
-        console.log("asset", asset);
-        
-        // Check if subaccount balance already exists
-        const existingBalance = await tx.subaccountBalance.findFirst({
-          where: {
-            subaccountId: subaccount!.id,
-            assetId: asset.id,
-          },
-        });
+    if (!enclaveResponse.ok) {
+      const errorData = await enclaveResponse.json();
+      throw new Error(errorData.error || 'Failed to claim in enclave');
+    }
 
-        if (existingBalance) {
-          // Update existing balance
-          await tx.subaccountBalance.update({
-            where: {
-              id: existingBalance.id,
-            },
-            data: {
-              amount: (BigInt(existingBalance.amount) + BigInt(transaction.amount)).toString(),
-            },
-          });
-        } else {
-          // Create new balance
-          await tx.subaccountBalance.create({
-            data: {
-              subaccountId: subaccount!.id,
-              assetId: asset.id,
-              amount: transaction.amount,
-            },
-          });
-        }
+    // Mark as claimed in database for UI purposes
+    await prisma.inboxTransaction.update({
+      where: { transactionHash },
+      data: {
+        claimed: true,
+        claimedAt: new Date(),
+      },
+    });
 
-        // Mark inbox as claimed
-        await tx.inboxTransaction.update({
-          where: { transactionHash },
-          data: {
-            claimed: true,
-            claimedAt: new Date(),
-          },
-        });
-      });
     return res.status(200).json({ success: true });
   } catch (error) {
     console.error('Error claiming transaction:', error);
     return res.status(500).json({ error: 'Internal server error' });
-  }}
+  }
+}

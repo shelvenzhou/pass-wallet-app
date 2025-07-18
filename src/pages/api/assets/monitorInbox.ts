@@ -6,11 +6,16 @@ const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || '';
 const ETHERSCAN_BASE = 'https://api.etherscan.io/v2/api';
 const CHAIN_ID = 11155111; // Sepolia Testnet
 
+const ENCLAVE_URL = process.env.ENCLAVE_URL || 'http://127.0.0.1:5000';
+
 interface MonitorResult {
-  wallet: string;
-  fromBlock: string;
-  toBlock: string;
-  transactions: EtherscanTransaction[];
+  success: boolean;
+  newTransactions: number;
+  ethTransactions: number;
+  erc20Transactions: number;
+  erc721Transactions: number;
+  erc1155Transactions: number;
+  currentBlock: string;
 }
 
 interface EtherscanTransaction {
@@ -92,40 +97,18 @@ export default async function handler(
     erc1155Transactions = erc1155Txs;
     newTransactions += erc1155Txs;
 
-    // Get all transactions from database by most recent
-    const transactions = await prisma.inboxTransaction.findMany({
-      where: { walletId: passWallet.id },
-      include: {
-        asset: true
-      },
-      orderBy: { blockNumber: 'desc' }
-    });
-
     return res.status(200).json({
-      wallet,
-      fromBlock,
-      toBlock: currentBlock,
-      transactions: transactions.map(tx => ({
-        hash: tx.transactionHash,
-        tokenType: tx.asset?.tokenType || 'ETH',
-        blockNumber: tx.blockNumber,
-        from: tx.fromAddress,
-        to: tx.toAddress,
-        value: tx.amount,
-        contractAddress: tx.asset?.contractAddress || undefined,
-        tokenName: tx.asset?.name,
-        tokenSymbol: tx.asset?.symbol,
-        tokenDecimal: tx.asset?.decimals.toString() || '18',
-        tokenID: tx.asset?.tokenId?.toString() || undefined,
-        claimed: tx.claimed
-      }))
+      success: true,
+      newTransactions,
+      ethTransactions,
+      erc20Transactions,
+      erc721Transactions,
+      erc1155Transactions,
+      currentBlock
     });
-
   } catch (error) {
     console.error('Error monitoring inbox:', error);
-    return res.status(500).json({ 
-      error: 'Failed to monitor inbox',
-    });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
 
@@ -136,7 +119,7 @@ async function monitorEthTransfers(
   walletId: number
 ): Promise<number> {
   let newTransactions = 0;
-
+  
   try {
     const url = new URL(ETHERSCAN_BASE);
     url.searchParams.set('chainid', CHAIN_ID.toString());
@@ -150,12 +133,9 @@ async function monitorEthTransfers(
 
     const response = await fetch(url.toString());
     const data = await response.json();
-    const transactions = data.result;
 
-    console.log('transactions', transactions);
-    
-    if (Array.isArray(transactions)) {
-      for (const tx of transactions) {
+    if (data.status === '1' && data.result) {
+      for (const tx of data.result) {
         // Only process incoming ETH transactions with value > 0
         if (
           tx.to?.toLowerCase() === walletAddress.toLowerCase() && 
@@ -202,6 +182,29 @@ async function monitorEthTransfers(
                 toAddress: tx.to,
               }
             });
+
+            // Also send to enclave
+            try {
+              await fetch(`${ENCLAVE_URL}/pass/wallets/deposits`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  wallet_address: walletAddress,
+                  asset_id: 'eth',
+                  amount: parseInt(tx.value),
+                  deposit_id: tx.hash,
+                  transaction_hash: tx.hash,
+                  block_number: tx.blockNumber,
+                  from_address: tx.from,
+                  to_address: tx.to,
+                }),
+              });
+            } catch (enclaveError) {
+              console.error('Failed to send deposit to enclave:', enclaveError);
+            }
+
             console.log('ETH Transfer saved:', tx.hash);
             newTransactions++;
           }
