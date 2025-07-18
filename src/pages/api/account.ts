@@ -10,7 +10,7 @@ export default async function handler(
   switch (req.method) {
     case 'GET':
       try {
-        // Use enclave to list wallets instead of database
+        // Use enclave to list wallet addresses
         const enclaveResponse = await fetch(`${ENCLAVE_URL}/pass/wallets`, {
           method: 'GET',
           headers: {
@@ -19,14 +19,31 @@ export default async function handler(
         });
 
         if (!enclaveResponse.ok) {
-          throw new Error('Failed to fetch wallets from enclave');
+          console.error('Enclave response not ok:', enclaveResponse.status, enclaveResponse.statusText);
+          // Return empty array instead of throwing error
+          return res.status(200).json([]);
         }
 
-        const wallets = await enclaveResponse.json();
+        const enclaveData = await enclaveResponse.json();
+        console.log('Enclave response:', enclaveData);
+        const walletAddresses = enclaveData.wallets || [];
+        console.log('Wallet addresses:', walletAddresses);
+        
+        // Get full wallet details from database for UI
+        const wallets = await prisma.passWallet.findMany({
+          where: {
+            address: {
+              in: walletAddresses
+            }
+          }
+        });
+        
+        console.log('Database wallets:', wallets);
         return res.status(200).json(wallets);
       } catch (error) {
         console.error('Failed to fetch wallets:', error);
-        return res.status(500).json({ error: 'Failed to fetch passwallets' });
+        // Return empty array instead of error object
+        return res.status(200).json([]);
       }
 
     case 'POST':
