@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "enclave-py": "cd py-kms-sim && source venv/bin/activate && python3 enclave_api.py"
+    "enclave-py": "cd py-kms-sim && source venv/bin/activate && python3 enclave_api.py",
+    "deploy-test": "nohup npm run dev > app.out.log 2>&1 &"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^6.7.2",
