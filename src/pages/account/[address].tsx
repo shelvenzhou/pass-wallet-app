@@ -356,7 +356,9 @@ const AccountDetailsPage: NextPage = () => {
       
       try {
         setIsLoadingInbox(true);
-        const response = await fetch('/api/assets/monitorInbox', {
+        
+        // First, monitor for new transactions
+        const monitorResponse = await fetch('/api/assets/monitorInbox', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -367,32 +369,50 @@ const AccountDetailsPage: NextPage = () => {
           }),
         });
         
-        const data = await response.json();
-        
-        if (response.ok) {
-          // Map the API response to InboxTransaction format
-          const mappedTransactions: InboxTransaction[] = data.transactions.map((tx: any) => ({
-            hash: tx.hash,
-            blockNumber: tx.blockNumber,
-            tokenType: tx.tokenType || 'ETH',
-            amount: tx.value,
-            fromAddress: tx.from,
-            toAddress: tx.to,
-            symbol: tx.tokenSymbol || 'ETH',
-            name: tx.tokenName || 'Ethereum',
-            decimals: parseInt(tx.tokenDecimal || '18'),
-            contractAddress: tx.contractAddress,
-            tokenId: tx.tokenID,
-            createdAt: new Date().toISOString(), // API doesn't return this, so use current time
-            claimed: tx.claimed || false
-          }));
+        if (monitorResponse.ok) {
+          const monitorData = await monitorResponse.json();
+          console.log('Monitor response:', monitorData);
           
-          setInboxTransactions(mappedTransactions);
+          // Now fetch the actual transactions from database
+          const transactionsResponse = await fetch(`/api/account/${accountAddress}`);
+          if (transactionsResponse.ok) {
+            const accountData = await transactionsResponse.json();
+            console.log('Account data:', accountData);
+            
+            // The account API should return transactions in the expected format
+            if (accountData.transactions && Array.isArray(accountData.transactions)) {
+              const mappedTransactions: InboxTransaction[] = accountData.transactions.map((tx: any) => ({
+                hash: tx.hash,
+                blockNumber: tx.blockNumber,
+                tokenType: tx.tokenType || 'ETH',
+                amount: tx.value,
+                fromAddress: tx.from,
+                toAddress: tx.to,
+                symbol: tx.tokenSymbol || 'ETH',
+                name: tx.tokenName || 'Ethereum',
+                decimals: parseInt(tx.tokenDecimal || '18'),
+                contractAddress: tx.contractAddress,
+                tokenId: tx.tokenID,
+                createdAt: new Date().toISOString(),
+                claimed: tx.claimed || false
+              }));
+              
+              setInboxTransactions(mappedTransactions);
+            } else {
+              console.log('No transactions found or invalid format');
+              setInboxTransactions([]);
+            }
+          } else {
+            console.error('Failed to fetch account data');
+            setInboxTransactions([]);
+          }
         } else {
-          console.error('Failed to monitor inbox:', data);
+          console.error('Failed to monitor inbox');
+          setInboxTransactions([]);
         }
       } catch (error) {
         console.error('Error monitoring inbox:', error);
+        setInboxTransactions([]);
       } finally {
         setIsLoadingInbox(false);
       }
@@ -406,7 +426,9 @@ const AccountDetailsPage: NextPage = () => {
     
     try {
       setIsLoadingInbox(true);
-      const response = await fetch('/api/assets/monitorInbox', {
+      
+      // First, monitor for new transactions
+      const monitorResponse = await fetch('/api/assets/monitorInbox', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -417,33 +439,54 @@ const AccountDetailsPage: NextPage = () => {
         }),
       });
       
-      if (response.ok) {
-        const data = await response.json();
+      if (monitorResponse.ok) {
+        const monitorData = await monitorResponse.json();
+        console.log('Monitor response:', monitorData);
         
-        // Map the API response to InboxTransaction format
-        const mappedTransactions: InboxTransaction[] = data.transactions.map((tx: any) => ({
-          hash: tx.hash,
-          blockNumber: tx.blockNumber,
-          tokenType: tx.tokenType || 'ETH',
-          amount: tx.value,
-          fromAddress: tx.from,
-          toAddress: tx.to,
-          symbol: tx.tokenSymbol || 'ETH',
-          name: tx.tokenName || 'Ethereum',
-          decimals: parseInt(tx.tokenDecimal || '18'),
-          contractAddress: tx.contractAddress,
-          tokenId: tx.tokenID,
-          createdAt: new Date().toISOString(),
-          claimed: tx.claimed || false
-        }));
-        
-        setInboxTransactions(mappedTransactions);
-        toast.success('Inbox refreshed successfully');
+        // Now fetch the actual transactions from database
+        const transactionsResponse = await fetch(`/api/account/${accountAddress}`);
+        if (transactionsResponse.ok) {
+          const accountData = await transactionsResponse.json();
+          console.log('Account data:', accountData);
+          
+          // The account API should return transactions in the expected format
+          if (accountData.transactions && Array.isArray(accountData.transactions)) {
+            const mappedTransactions: InboxTransaction[] = accountData.transactions.map((tx: any) => ({
+              hash: tx.hash,
+              blockNumber: tx.blockNumber,
+              tokenType: tx.tokenType || 'ETH',
+              amount: tx.value,
+              fromAddress: tx.from,
+              toAddress: tx.to,
+              symbol: tx.tokenSymbol || 'ETH',
+              name: tx.tokenName || 'Ethereum',
+              decimals: parseInt(tx.tokenDecimal || '18'),
+              contractAddress: tx.contractAddress,
+              tokenId: tx.tokenID,
+              createdAt: new Date().toISOString(),
+              claimed: tx.claimed || false
+            }));
+            
+            setInboxTransactions(mappedTransactions);
+            toast.success('Inbox refreshed successfully');
+          } else {
+            console.log('No transactions found or invalid format');
+            setInboxTransactions([]);
+            toast.success('No new transactions found');
+          }
+        } else {
+          console.error('Failed to fetch account data');
+          setInboxTransactions([]);
+          toast.error('Failed to fetch transactions');
+        }
       } else {
+        console.error('Failed to monitor inbox');
+        setInboxTransactions([]);
         toast.error('Failed to monitor inbox');
       }
     } catch (error) {
       console.error('Error refreshing inbox transactions:', error);
+      setInboxTransactions([]);
       toast.error('Error refreshing inbox transactions');
     } finally {
       setIsLoadingInbox(false);
