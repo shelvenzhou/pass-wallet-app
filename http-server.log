@@ -1,0 +1,4 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running `target/debug/http-server`
+Starting HTTP server on port 5000
+HTTP server listening on port 5000
