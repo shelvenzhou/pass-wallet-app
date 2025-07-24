@@ -3,6 +3,7 @@
 
 HTTP_PORT = 5000
 NEXTJS_PORT = 3000
+ENCLAVE_CID = 16
 
 .PHONY: start list stop help
 
@@ -14,7 +15,7 @@ help:
 
 start:
 	@echo "Starting servers on port $(HTTP_PORT) and $(NEXTJS_PORT)..."
-	@cd nitro-enclave && nohup cargo run --bin http-server > ../http-server.log 2>&1 & echo $$! > ../http-server.pid.log
+	@cd nitro-enclave && ENCLAVE_CID=$(ENCLAVE_CID) nohup cargo run --bin http-server > ../http-server.log 2>&1 & echo $$! > ../http-server.pid.log
 	@nohup npm run dev > nextjs-dev.log 2>&1 & echo $$! > nextjs.pid.log
 	@sleep 3
 	@echo "Servers started. Use 'make list' to check status."

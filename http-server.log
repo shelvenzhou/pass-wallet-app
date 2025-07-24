@@ -1,4 +1,8 @@
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.13s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.14s
      Running `target/debug/http-server`
 Starting HTTP server on port 5000
 HTTP server listening on port 5000
+Sending command to enclave: {"List":null}
+Addresses: [String("0x1736070b106c41884c15bbd4cb33b0212fc3db91"), String("0xfeecf83c8bcb9c5be0b63bbddc3563a4dc49e419")]
+Sending command to enclave: {"ListPassWallets":null}
+Sending command to enclave: {"ListPassWallets":null}
