@@ -13,7 +13,7 @@ PassWallet is a decentralized wallet application that enables secure key managem
 - **Message Signing**: Sign messages securely through the enclave
 - **Transaction History**: View transaction history and signed message records
 - **Asset Management**: View and transfer assets (ETH, USDC, etc.)
-- **Secure Key Management**: Keys are managed in a simulated secure enclave using Python's `eth-account` library. To be replaced with a real TEE such as AWS Nitro Enclaves or Intel SGX in production.
+- **Secure Key Management**: Keys are encumbered and managed in a secure TEE enclave, currently deployed using AWS Nitro Enclaves. We also provide a Python server that simulates a secure enclave. This encumbrance ensures that all signing logic is handled by pre-defined rules, cannot be overwritten arbitrarily by account owner
 
 ## Quick Start
 
