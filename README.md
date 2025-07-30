@@ -2,6 +2,7 @@
 
 By Jay Yu
 
+[Paper Draft](https://cs191w.stanford.edu/projects/Yu,%20Jay_Systems%20191W.pdf)
 
 ## Overview
 PassWallet is a decentralized wallet application that enables secure key management through a simulated Trusted Execution Environment (TEE). It combines Next.js, RainbowKit, and WalletConnect for the frontend with a AWS Nitro Enclave TEE for key management and signing. This is a demo application based on recent work on key encumbrance techniques and TEE-based wallet platforms such as [Liquefaction](https://github.com/key-encumbrance/liquefaction).
@@ -13,7 +14,7 @@ PassWallet is a decentralized wallet application that enables secure key managem
 - **Message Signing**: Sign messages securely through the enclave
 - **Transaction History**: View transaction history and signed message records
 - **Asset Management**: View and transfer assets (ETH, USDC, etc.)
-- **Secure Key Management**: Keys are encumbered and managed in a secure TEE enclave, currently deployed using AWS Nitro Enclaves. We also provide a Python server that simulates a secure enclave. This encumbrance ensures that all signing logic is handled by pre-defined rules, cannot be overwritten arbitrarily by account owner
+- **Secure Key Management**: Key encumbrance takes place inside of an AWS Nitro Enclave, ensuring that all signing logic is handled by pre-defined rules and cannot be overwritten arbitrarily by account owner. See `nitro-enclave` folder for more details on server implementation. We also provide a Python simulation of the enclave in `py-kms-sim` folder for API testing.
 
 ## Quick Start
 
@@ -43,7 +44,7 @@ NEXT_PUBLIC_PROJECT_ID=your_walletconnect_project_id
 DATABASE_URL="file:./dev.db"
 ```
 
-Create `py-kms-sim/.env`:
+(Optional) Create `py-kms-sim/.env`:
 ```
 ENCLAVE_SECRET=your_secure_enclave_secret
 ```
@@ -69,6 +70,7 @@ Run frontend:
 npm run dev
 ```
 
+For server deployment, see `Makefile` for deployment commands.
 
 Visit `http://localhost:3000` to use the application.
 
@@ -86,7 +88,7 @@ Visit `http://localhost:3000` to use the application.
 │   ├── enclave_api.py   # REST API endpoints
 │   ├── enclave_kms.py   # Core KMS logic
 │   └── venv/            # Python virtual environment
-├── nitro-enclave/       # AWS Nitro Enclave implementation
+├── nitro-enclave/       # AWS Nitro Enclave implementation - see `nitro-enclave/README.md` for more details
 └── prisma/              # Database schema
 ```
 
@@ -104,7 +106,7 @@ Visit `http://localhost:3000` to use the application.
 
 For production use:
 
-- Replace simulated TEE with real hardware security (AWS Nitro Enclaves, Intel SGX)
+- Use a TEE with strong hardware security (AWS Nitro Enclaves, Intel SGX) rather than a simulated TEE.
 - Implement key rotation and secure backup procedures
 - Add comprehensive access controls and audit logging
 - Use secure channels between components

@@ -1,181 +1,13 @@
 // Backend logic for the server - parse commands and call the appropriate functions
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::convert::TryInto;
-use anyhow::{Result, anyhow};
-use k256::{SecretKey, PublicKey, ecdsa::{SigningKey, VerifyingKey, Signature, RecoveryId}};
-use k256::elliptic_curve::sec1::ToEncodedPoint;
-use rand::RngCore;
-use sha3::{Keccak256, Digest};
-use aes_gcm::{Aes256Gcm, Key, Nonce, aead::Aead, KeyInit};
-use hex;
+use anyhow::Result;
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct EncryptedKey {
-    ciphertext: String,
-    nonce: String,
-}
+use crate::key_manager::EnclaveKMS;
+use crate::pass_logic::{PassWalletManager, Asset, Subaccount, Deposit, TokenType};
 
-#[derive(Clone)]
-pub struct EnclaveKMS {
-    secret: [u8; 32],
-    keystore: Arc<Mutex<HashMap<String, EncryptedKey>>>,
-}
 
-impl EnclaveKMS {
-    pub fn new(secret: &str) -> Result<Self> {
-        let mut secret_bytes = [0u8; 32];
-        let secret_hash = Keccak256::digest(secret.as_bytes());
-        secret_bytes.copy_from_slice(&secret_hash);
-        
-        Ok(EnclaveKMS {
-            secret: secret_bytes,
-            keystore: Arc::new(Mutex::new(HashMap::new())),
-        })
-    }
-
-    pub fn generate_ethereum_account(&self) -> Result<(String, String)> {
-        let mut rng = rand::thread_rng();
-        let mut private_key_bytes = [0u8; 32];
-        rng.fill_bytes(&mut private_key_bytes);
-        
-        let secret_key = SecretKey::from_bytes(&private_key_bytes.into())?;
-        let public_key = secret_key.public_key();
-        
-        let address = self.public_key_to_address(&public_key);
-        let private_key = format!("0x{}", hex::encode(private_key_bytes));
-        
-        Ok((address, private_key))
-    }
-
-    fn public_key_to_address(&self, public_key: &PublicKey) -> String {
-        let public_key_bytes = public_key.to_encoded_point(false);
-        let public_key_slice = public_key_bytes.as_bytes();
-        // Skip the first byte (0x04) for uncompressed format
-        let hash = Keccak256::digest(&public_key_slice[1..]);
-        // Take the last 20 bytes and format as hex with 0x prefix
-        format!("0x{}", hex::encode(&hash[12..]))
-    }
-
-    pub fn encrypt_key(&self, private_key: &str) -> Result<EncryptedKey> {
-        let key = Key::<Aes256Gcm>::from_slice(&self.secret);
-        let cipher = Aes256Gcm::new(key);
-        
-        let mut nonce_bytes = [0u8; 12];
-        rand::thread_rng().fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
-        
-        let private_key_clean = private_key.strip_prefix("0x").unwrap_or(private_key);
-        let private_key_bytes = hex::decode(private_key_clean)?;
-        
-        let ciphertext = cipher.encrypt(nonce, private_key_bytes.as_ref())
-            .map_err(|e| anyhow!("Encryption failed: {}", e))?;
-        
-        Ok(EncryptedKey {
-            ciphertext: hex::encode(ciphertext),
-            nonce: hex::encode(nonce_bytes),
-        })
-    }
-
-    pub fn decrypt_key(&self, encrypted_key: &EncryptedKey) -> Result<String> {
-        let key = Key::<Aes256Gcm>::from_slice(&self.secret);
-        let cipher = Aes256Gcm::new(key);
-        
-        let nonce_bytes = hex::decode(&encrypted_key.nonce)?;
-        let nonce = Nonce::from_slice(&nonce_bytes);
-        
-        let ciphertext = hex::decode(&encrypted_key.ciphertext)?;
-        
-        let plaintext = cipher.decrypt(nonce, ciphertext.as_ref())
-            .map_err(|e| anyhow!("Decryption failed: {}", e))?;
-        
-        Ok(format!("0x{}", hex::encode(plaintext)))
-    }
-
-    pub fn store_key(&mut self, address: &str, encrypted_key: &EncryptedKey) -> Result<()> {
-        self.keystore.lock().unwrap().insert(address.to_string(), encrypted_key.clone());
-        Ok(())
-    }
-
-    pub fn get_key(&self, address: &str) -> Result<Option<EncryptedKey>> {
-        Ok(self.keystore.lock().unwrap().get(address).cloned())
-    }
-
-    pub fn list_addresses(&self) -> Result<Vec<String>> {
-        Ok(self.keystore.lock().unwrap().keys().cloned().collect())
-    }
-
-    pub fn sign_message(&self, message: &str, address: &str) -> Result<Option<String>> {
-        let encrypted_key = match self.get_key(address)? {
-            Some(key) => key,
-            None => return Ok(None),
-        };
-        
-        let private_key_hex = match self.decrypt_key(&encrypted_key) {
-            Ok(key) => key,
-            Err(_) => return Ok(None),
-        };
-        
-        let private_key_clean = private_key_hex.strip_prefix("0x").unwrap_or(&private_key_hex);
-        let private_key_bytes = hex::decode(private_key_clean)?;
-        
-        // Convert Vec<u8> to [u8; 32] array
-        let private_key_array: [u8; 32] = private_key_bytes.try_into()
-            .map_err(|_| anyhow!("Invalid private key length"))?;
-        
-        let secret_key = SecretKey::from_bytes(&private_key_array.into())?;
-        let signing_key = SigningKey::from(secret_key);
-        
-        // Create EIP-191 message hash
-        let message_hash = self.hash_message(message);
-        
-        let (signature, recovery_id) = signing_key.sign_prehash_recoverable(&message_hash)?;
-        
-        // Convert to Ethereum signature format (r, s, v)
-        let signature_bytes = signature.to_bytes();
-        let mut eth_signature = [0u8; 65];
-        eth_signature[..64].copy_from_slice(&signature_bytes);
-        eth_signature[64] = recovery_id.to_byte() + 27; // Ethereum v value
-        
-        Ok(Some(format!("0x{}", hex::encode(eth_signature))))
-    }
-
-    fn hash_message(&self, message: &str) -> [u8; 32] {
-        let prefix = format!("\x19Ethereum Signed Message:\n{}", message.len());
-        let mut hasher = Keccak256::new();
-        hasher.update(prefix.as_bytes());
-        hasher.update(message.as_bytes());
-        hasher.finalize().into()
-    }
-
-    pub fn verify_message(&self, message: &str, signature: &str, address: &str) -> Result<bool> {
-        let signature_clean = signature.strip_prefix("0x").unwrap_or(signature);
-        let signature_bytes = hex::decode(signature_clean)?;
-        
-        if signature_bytes.len() != 65 {
-            return Ok(false);
-        }
-        
-        let recovery_id = RecoveryId::from_byte(signature_bytes[64] - 27)
-            .ok_or_else(|| anyhow!("Invalid recovery ID"))?;
-        
-        // Convert &[u8] to [u8; 64] array
-        let signature_array: [u8; 64] = signature_bytes[..64].try_into()
-            .map_err(|_| anyhow!("Invalid signature length"))?;
-        
-        let signature = Signature::from_bytes(&signature_array.into())?;
-        
-        let message_hash = self.hash_message(message);
-        
-        let recovered_key = VerifyingKey::recover_from_prehash(&message_hash, &signature, recovery_id)?;
-        let recovered_pubkey = PublicKey::from(&recovered_key);
-        let recovered_address = self.public_key_to_address(&recovered_pubkey);
-        
-        Ok(recovered_address.to_lowercase() == address.to_lowercase())
-    }
-}
 
 // Global KMS instance
 lazy_static::lazy_static! {
@@ -185,12 +17,97 @@ lazy_static::lazy_static! {
     };
 }
 
+// Global PASS Wallet Manager instance
+lazy_static::lazy_static! {
+    static ref PASS_WALLET_MANAGER: PassWalletManager = {
+        PassWalletManager::new(KMS.clone())
+    };
+}
+
 #[derive(Serialize, Deserialize)]
 pub enum Command {
+    // Existing KMS commands
     Keygen,
     Sign { address: String, message: String },
     List,
     Verify { address: String, message: String, signature: String },
+    
+    // PASS Wallet commands
+    CreatePassWallet { name: String, owner: String },
+    ListPassWallets,
+    GetPassWalletState { wallet_address: String },
+    
+    // Asset management
+    AddAsset { 
+        wallet_address: String, 
+        asset_id: String, 
+        token_type: String,
+        contract_address: Option<String>,
+        token_id: Option<String>,
+        symbol: String,
+        name: String,
+        decimals: u32,
+    },
+    
+    // Subaccount management
+    AddSubaccount { 
+        wallet_address: String, 
+        subaccount_id: String,
+        label: String,
+        address: String,
+    },
+    
+    // Deposit and withdrawal operations
+    InboxDeposit { 
+        wallet_address: String,
+        asset_id: String,
+        amount: u64,
+        deposit_id: String,
+        transaction_hash: String,
+        block_number: String,
+        from_address: String,
+        to_address: String,
+    },
+    ClaimInbox { 
+        wallet_address: String,
+        deposit_id: String,
+        subaccount_id: String,
+    },
+    
+    // Transfer operations
+    InternalTransfer { 
+        wallet_address: String,
+        asset_id: String,
+        amount: u64,
+        from_subaccount: String,
+        to_subaccount: String,
+    },
+    Withdraw { 
+        wallet_address: String,
+        asset_id: String,
+        amount: u64,
+        subaccount_id: String,
+        destination: String,
+    },
+    
+    // Utility operations
+    ProcessOutbox { wallet_address: String },
+    GetBalance { 
+        wallet_address: String,
+        subaccount_id: String,
+        asset_id: String,
+    },
+    GetSubaccountBalances { 
+        wallet_address: String,
+        subaccount_id: String,
+    },
+    
+    // Signing operations
+    SignGSM { 
+        wallet_address: String,
+        domain: String,
+        message: String,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -204,39 +121,19 @@ pub fn parse_command(command: &str) -> Result<Response, String> {
     let command_data: Command = serde_json::from_str(command)
         .map_err(|e| format!("Failed to parse command: {}", e))?;
     
-    let mut kms = KMS.lock().unwrap();
-    
     match command_data {
+        // Existing KMS commands
         Command::Keygen => {
-            match kms.generate_ethereum_account() {
-                Ok((address, private_key)) => {
-                    // Encrypt and store the key
-                    match kms.encrypt_key(&private_key) {
-                        Ok(encrypted_key) => {
-                            if let Err(e) = kms.store_key(&address, &encrypted_key) {
-                                return Ok(Response {
-                                    success: false,
-                                    data: None,
-                                    error: Some(format!("Failed to store key: {}", e)),
-                                });
-                            }
-                            
-                            Ok(Response {
-                                success: true,
-                                data: Some(serde_json::json!({
-                                    "address": address,
-                                    "private_key": private_key
-                                })),
-                                error: None,
-                            })
-                        }
-                        Err(e) => Ok(Response {
-                            success: false,
-                            data: None,
-                            error: Some(format!("Failed to encrypt key: {}", e)),
-                        }),
-                    }
-                }
+            let mut kms = KMS.lock().unwrap();
+            match kms.handle_keygen() {
+                Ok(account) => Ok(Response {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "address": account.address,
+                        "private_key": account.private_key
+                    })),
+                    error: None,
+                }),
                 Err(e) => Ok(Response {
                     success: false,
                     data: None,
@@ -244,7 +141,9 @@ pub fn parse_command(command: &str) -> Result<Response, String> {
                 }),
             }
         }
+        
         Command::Sign { address, message } => {
+            let kms = KMS.lock().unwrap();
             match kms.sign_message(&message, &address) {
                 Ok(Some(signature)) => Ok(Response {
                     success: true,
@@ -267,7 +166,9 @@ pub fn parse_command(command: &str) -> Result<Response, String> {
                 }),
             }
         }
+        
         Command::List => {
+            let kms = KMS.lock().unwrap();
             match kms.list_addresses() {
                 Ok(addresses) => Ok(Response {
                     success: true,
@@ -281,7 +182,9 @@ pub fn parse_command(command: &str) -> Result<Response, String> {
                 }),
             }
         }
+        
         Command::Verify { address, message, signature } => {
+            let kms = KMS.lock().unwrap();
             match kms.verify_message(&message, &signature, &address) {
                 Ok(is_valid) => Ok(Response {
                     success: true,
@@ -296,6 +199,376 @@ pub fn parse_command(command: &str) -> Result<Response, String> {
                     success: false,
                     data: None,
                     error: Some(format!("Verification error: {}", e)),
+                }),
+            }
+        }
+        
+        // PASS Wallet commands
+        Command::CreatePassWallet { name, owner } => {
+            match PASS_WALLET_MANAGER.create_wallet(name.clone(), owner.clone()) {
+                Ok(wallet_address) => {
+                    match PASS_WALLET_MANAGER.get_wallet_state(&wallet_address) {
+                        Ok(state) => Ok(Response {
+                            success: true,
+                            data: Some(serde_json::json!({
+                                "wallet_address": wallet_address,
+                                "name": name,
+                                "owner": owner,
+                                "state": state
+                            })),
+                            error: None,
+                        }),
+                        Err(e) => Ok(Response {
+                            success: false,
+                            data: None,
+                            error: Some(format!("Failed to get wallet state: {}", e)),
+                        }),
+                    }
+                }
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to create PASS wallet: {}", e)),
+                }),
+            }
+        }
+        
+        Command::ListPassWallets => {
+            let wallets = PASS_WALLET_MANAGER.list_wallets();
+            Ok(Response {
+                success: true,
+                data: Some(serde_json::json!({
+                    "wallets": wallets
+                })),
+                error: None,
+            })
+        }
+        
+        Command::GetPassWalletState { wallet_address } => {
+            match PASS_WALLET_MANAGER.get_wallet_state(&wallet_address) {
+                Ok(state) => Ok(Response {
+                    success: true,
+                    data: Some(state),
+                    error: None,
+                }),
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to get wallet state: {}", e)),
+                }),
+            }
+        }
+        
+        Command::AddAsset { 
+            wallet_address, 
+            asset_id, 
+            token_type,
+            contract_address,
+            token_id,
+            symbol,
+            name,
+            decimals,
+        } => {
+            let token_type_enum = match token_type.as_str() {
+                "ETH" => TokenType::ETH,
+                "ERC20" => TokenType::ERC20,
+                "ERC721" => TokenType::ERC721,
+                "ERC1155" => TokenType::ERC1155,
+                _ => return Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some("Invalid token type".to_string()),
+                }),
+            };
+            
+            let asset = Asset {
+                token_type: token_type_enum,
+                contract_address,
+                token_id,
+                symbol: symbol.clone(),
+                name: name.clone(),
+                decimals,
+            };
+            
+            match PASS_WALLET_MANAGER.add_asset(&wallet_address, asset_id.clone(), asset) {
+                Ok(()) => Ok(Response {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "wallet_address": wallet_address,
+                        "asset_id": asset_id,
+                        "symbol": symbol,
+                        "name": name
+                    })),
+                    error: None,
+                }),
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to add asset: {}", e)),
+                }),
+            }
+        }
+        
+        Command::AddSubaccount { 
+            wallet_address, 
+            subaccount_id,
+            label,
+            address,
+        } => {
+            let subaccount = Subaccount {
+                id: subaccount_id.clone(),
+                label: label.clone(),
+                address: address.clone(),
+            };
+            
+            match PASS_WALLET_MANAGER.add_subaccount(&wallet_address, subaccount) {
+                Ok(()) => Ok(Response {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "wallet_address": wallet_address,
+                        "subaccount_id": subaccount_id,
+                        "label": label,
+                        "address": address
+                    })),
+                    error: None,
+                }),
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to add subaccount: {}", e)),
+                }),
+            }
+        }
+        
+        Command::InboxDeposit { 
+            wallet_address,
+            asset_id,
+            amount,
+            deposit_id,
+            transaction_hash,
+            block_number,
+            from_address,
+            to_address,
+        } => {
+            let deposit = Deposit {
+                asset_id: asset_id.clone(),
+                amount,
+                deposit_id: deposit_id.clone(),
+                transaction_hash: transaction_hash.clone(),
+                block_number: block_number.clone(),
+                from_address: from_address.clone(),
+                to_address: to_address.clone(),
+            };
+            
+            match PASS_WALLET_MANAGER.inbox_deposit(&wallet_address, deposit) {
+                Ok(()) => Ok(Response {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "wallet_address": wallet_address,
+                        "asset_id": asset_id,
+                        "amount": amount,
+                        "deposit_id": deposit_id,
+                        "transaction_hash": transaction_hash
+                    })),
+                    error: None,
+                }),
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to process inbox deposit: {}", e)),
+                }),
+            }
+        }
+        
+        Command::ClaimInbox { 
+            wallet_address,
+            deposit_id,
+            subaccount_id,
+        } => {
+            match PASS_WALLET_MANAGER.claim_inbox(&wallet_address, &deposit_id, &subaccount_id) {
+                Ok(()) => {
+                    // Get updated balance
+                    match PASS_WALLET_MANAGER.get_wallet_state(&wallet_address) {
+                        Ok(state) => Ok(Response {
+                            success: true,
+                            data: Some(serde_json::json!({
+                                "wallet_address": wallet_address,
+                                "deposit_id": deposit_id,
+                                "subaccount_id": subaccount_id,
+                                "state": state
+                            })),
+                            error: None,
+                        }),
+                        Err(e) => Ok(Response {
+                            success: false,
+                            data: None,
+                            error: Some(format!("Failed to get updated state: {}", e)),
+                        }),
+                    }
+                }
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to claim inbox: {}", e)),
+                }),
+            }
+        }
+        
+        Command::InternalTransfer { 
+            wallet_address,
+            asset_id,
+            amount,
+            from_subaccount,
+            to_subaccount,
+        } => {
+            match PASS_WALLET_MANAGER.internal_transfer(&wallet_address, &asset_id, amount, &from_subaccount, &to_subaccount) {
+                Ok(()) => {
+                    // Get updated balances
+                    let from_balance = PASS_WALLET_MANAGER.get_balance(&wallet_address, &from_subaccount, &asset_id)
+                        .unwrap_or(0);
+                    let to_balance = PASS_WALLET_MANAGER.get_balance(&wallet_address, &to_subaccount, &asset_id)
+                        .unwrap_or(0);
+                    
+                    Ok(Response {
+                        success: true,
+                        data: Some(serde_json::json!({
+                            "wallet_address": wallet_address,
+                            "asset_id": asset_id,
+                            "amount": amount,
+                            "from_subaccount": from_subaccount,
+                            "to_subaccount": to_subaccount,
+                            "from_balance": from_balance,
+                            "to_balance": to_balance
+                        })),
+                        error: None,
+                    })
+                }
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to process internal transfer: {}", e)),
+                }),
+            }
+        }
+        
+        Command::Withdraw { 
+            wallet_address,
+            asset_id,
+            amount,
+            subaccount_id,
+            destination,
+        } => {
+            match PASS_WALLET_MANAGER.withdraw(&wallet_address, &asset_id, amount, &subaccount_id, &destination) {
+                Ok(()) => {
+                    let remaining_balance = PASS_WALLET_MANAGER.get_balance(&wallet_address, &subaccount_id, &asset_id)
+                        .unwrap_or(0);
+                    
+                    Ok(Response {
+                        success: true,
+                        data: Some(serde_json::json!({
+                            "wallet_address": wallet_address,
+                            "asset_id": asset_id,
+                            "amount": amount,
+                            "subaccount_id": subaccount_id,
+                            "destination": destination,
+                            "remaining_balance": remaining_balance
+                        })),
+                        error: None,
+                    })
+                }
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to process withdrawal: {}", e)),
+                }),
+            }
+        }
+        
+        Command::ProcessOutbox { wallet_address } => {
+            match PASS_WALLET_MANAGER.process_outbox(&wallet_address) {
+                Ok(processed_items) => Ok(Response {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "wallet_address": wallet_address,
+                        "processed_items": processed_items,
+                        "count": processed_items.len()
+                    })),
+                    error: None,
+                }),
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to process outbox: {}", e)),
+                }),
+            }
+        }
+        
+        Command::GetBalance { 
+            wallet_address,
+            subaccount_id,
+            asset_id,
+        } => {
+            match PASS_WALLET_MANAGER.get_balance(&wallet_address, &subaccount_id, &asset_id) {
+                Ok(balance) => Ok(Response {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "wallet_address": wallet_address,
+                        "subaccount_id": subaccount_id,
+                        "asset_id": asset_id,
+                        "balance": balance
+                    })),
+                    error: None,
+                }),
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to get balance: {}", e)),
+                }),
+            }
+        }
+        
+        Command::GetSubaccountBalances { 
+            wallet_address,
+            subaccount_id,
+        } => {
+            match PASS_WALLET_MANAGER.get_subaccount_balances(&wallet_address, &subaccount_id) {
+                Ok(balances) => Ok(Response {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "wallet_address": wallet_address,
+                        "subaccount_id": subaccount_id,
+                        "balances": balances
+                    })),
+                    error: None,
+                }),
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to get subaccount balances: {}", e)),
+                }),
+            }
+        }
+        
+        Command::SignGSM { 
+            wallet_address,
+            domain,
+            message,
+        } => {
+            match PASS_WALLET_MANAGER.sign_message(&wallet_address, &domain, &message) {
+                Ok(signature) => Ok(Response {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "wallet_address": wallet_address,
+                        "signature": signature,
+                        "domain": domain,
+                        "message": message
+                    })),
+                    error: None,
+                }),
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to sign GSM: {}", e)),
                 }),
             }
         }

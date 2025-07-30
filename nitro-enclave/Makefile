@@ -26,7 +26,7 @@ client: build
 	nitro-cli build-enclave --docker-uri nitro-enclave-client --output-file nitro_enclave_client.eif
 
 run-client: build
-	./nitro-enclave client --cid 21 --port 7777
+	./nitro-enclave client --cid 16 --port 7777
 
 .PHONY: clean
 clean:
@@ -38,4 +38,7 @@ enclave: server
 	export ENCLAVE_ID=$$ENCLAVE_ID_NEW && \
 	export ENCLAVE_CID=16 && \
 	echo "export ENCLAVE_ID=$$ENCLAVE_ID_NEW && export ENCLAVE_CID=16"
+
+http-server:
+	cargo run --bin http-server
 

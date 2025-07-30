@@ -16,14 +16,7 @@ const AccountsList = () => {
   const { address } = useAccount();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newWalletName, setNewWalletName] = useState('');
-  const [accounts, setAccounts] = useState<PassAccount[]>([
-    {
-      address: PASS_WALLET_ADDRESS,
-      name: 'Main Account',
-      owner: '0xabcd...efgh',
-      createdAt: '2024-02-17',
-    },
-  ]);
+  const [accounts, setAccounts] = useState<PassAccount[]>([]); // Start with empty array instead of default data
 
   const accountCardStyle = {
     padding: '20px',
@@ -55,9 +48,22 @@ const AccountsList = () => {
 
   useEffect(() => {
     const fetchAccounts = async () => {
-      const response = await fetch('/api/account/');
-      const data = await response.json();
-      setAccounts(data);
+      try {
+        const response = await fetch('/api/account/');
+        const data = await response.json();
+        console.log('API response:', data);
+        
+        // Ensure data is an array
+        if (Array.isArray(data)) {
+          setAccounts(data);
+        } else {
+          console.error('Expected array but got:', typeof data, data);
+          setAccounts([]);
+        }
+      } catch (error) {
+        console.error('Error fetching accounts:', error);
+        setAccounts([]);
+      }
     };
     fetchAccounts();
   }, []);

@@ -45,6 +45,8 @@ local
 .env.test.local
 .env.production.local
 
+*.log
+
 # vercel
 .vercel
 
@@ -60,3 +62,4 @@ py-kms-sim/__pycache__
 nitro-enclave/target/
 nitro-enclave/nitro_enclave_*.eif
 nitro-enclave/nitro-enclave
+http-server.log

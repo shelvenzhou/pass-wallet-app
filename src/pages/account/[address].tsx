@@ -356,7 +356,9 @@ const AccountDetailsPage: NextPage = () => {
       
       try {
         setIsLoadingInbox(true);
-        const response = await fetch('/api/assets/monitorInbox', {
+        
+        // First, monitor for new transactions
+        const monitorResponse = await fetch('/api/assets/monitorInbox', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -367,46 +369,76 @@ const AccountDetailsPage: NextPage = () => {
           }),
         });
         
-        const data = await response.json();
-        
-        if (response.ok) {
-          // Map the API response to InboxTransaction format
-          const mappedTransactions: InboxTransaction[] = data.transactions.map((tx: any) => ({
-            hash: tx.hash,
-            blockNumber: tx.blockNumber,
-            tokenType: tx.tokenType || 'ETH',
-            amount: tx.value,
-            fromAddress: tx.from,
-            toAddress: tx.to,
-            symbol: tx.tokenSymbol || 'ETH',
-            name: tx.tokenName || 'Ethereum',
-            decimals: parseInt(tx.tokenDecimal || '18'),
-            contractAddress: tx.contractAddress,
-            tokenId: tx.tokenID,
-            createdAt: new Date().toISOString(), // API doesn't return this, so use current time
-            claimed: tx.claimed || false
-          }));
+        if (monitorResponse.ok) {
+          const monitorData = await monitorResponse.json();
+          console.log('Monitor response:', monitorData);
           
-          setInboxTransactions(mappedTransactions);
+          // Now fetch the actual transactions from database
+          const transactionsResponse = await fetch(`/api/account/${accountAddress}`);
+          if (transactionsResponse.ok) {
+            const accountData = await transactionsResponse.json();
+            console.log('Account data:', accountData);
+            console.log('Connected address:', connectedAddress);
+            
+            // The account API should return transactions in the expected format
+            if (accountData.transactions && Array.isArray(accountData.transactions)) {
+              console.log('Raw transactions:', accountData.transactions);
+              
+              const mappedTransactions: InboxTransaction[] = accountData.transactions.map((tx: any) => {
+                const mapped = {
+                  hash: tx.hash,
+                  blockNumber: tx.blockNumber,
+                  tokenType: tx.tokenType || 'ETH',
+                  amount: tx.value,
+                  fromAddress: tx.from,
+                  toAddress: tx.to,
+                  symbol: tx.tokenSymbol || 'ETH',
+                  name: tx.tokenName || 'Ethereum',
+                  decimals: parseInt(tx.tokenDecimal || '18'),
+                  contractAddress: tx.contractAddress,
+                  tokenId: tx.tokenID,
+                  createdAt: new Date().toISOString(),
+                  claimed: tx.claimed || false
+                };
+                console.log('Mapped transaction:', mapped);
+                return mapped;
+              });
+              
+              console.log('All mapped transactions:', mappedTransactions);
+              console.log('Filtered transactions:', mappedTransactions.filter(tx => tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()));
+              
+              setInboxTransactions(mappedTransactions);
+            } else {
+              console.log('No transactions found or invalid format');
+              setInboxTransactions([]);
+            }
+          } else {
+            console.error('Failed to fetch account data');
+            setInboxTransactions([]);
+          }
         } else {
-          console.error('Failed to monitor inbox:', data);
+          console.error('Failed to monitor inbox');
+          setInboxTransactions([]);
         }
       } catch (error) {
         console.error('Error monitoring inbox:', error);
+        setInboxTransactions([]);
       } finally {
         setIsLoadingInbox(false);
       }
     };
 
     fetchInboxTransactions();
-  }, [accountAddress]);
+  }, [accountAddress, connectedAddress]);
 
   const refreshInboxTransactions = async () => {
     if (!accountAddress) return;
     
     try {
       setIsLoadingInbox(true);
-      const response = await fetch('/api/assets/monitorInbox', {
+      
+      // First, monitor for new transactions
+      const monitorResponse = await fetch('/api/assets/monitorInbox', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -417,33 +449,54 @@ const AccountDetailsPage: NextPage = () => {
         }),
       });
       
-      if (response.ok) {
-        const data = await response.json();
+      if (monitorResponse.ok) {
+        const monitorData = await monitorResponse.json();
+        console.log('Monitor response:', monitorData);
         
-        // Map the API response to InboxTransaction format
-        const mappedTransactions: InboxTransaction[] = data.transactions.map((tx: any) => ({
-          hash: tx.hash,
-          blockNumber: tx.blockNumber,
-          tokenType: tx.tokenType || 'ETH',
-          amount: tx.value,
-          fromAddress: tx.from,
-          toAddress: tx.to,
-          symbol: tx.tokenSymbol || 'ETH',
-          name: tx.tokenName || 'Ethereum',
-          decimals: parseInt(tx.tokenDecimal || '18'),
-          contractAddress: tx.contractAddress,
-          tokenId: tx.tokenID,
-          createdAt: new Date().toISOString(),
-          claimed: tx.claimed || false
-        }));
-        
-        setInboxTransactions(mappedTransactions);
-        toast.success('Inbox refreshed successfully');
+        // Now fetch the actual transactions from database
+        const transactionsResponse = await fetch(`/api/account/${accountAddress}`);
+        if (transactionsResponse.ok) {
+          const accountData = await transactionsResponse.json();
+          console.log('Account data:', accountData);
+          
+          // The account API should return transactions in the expected format
+          if (accountData.transactions && Array.isArray(accountData.transactions)) {
+            const mappedTransactions: InboxTransaction[] = accountData.transactions.map((tx: any) => ({
+              hash: tx.hash,
+              blockNumber: tx.blockNumber,
+              tokenType: tx.tokenType || 'ETH',
+              amount: tx.value,
+              fromAddress: tx.from,
+              toAddress: tx.to,
+              symbol: tx.tokenSymbol || 'ETH',
+              name: tx.tokenName || 'Ethereum',
+              decimals: parseInt(tx.tokenDecimal || '18'),
+              contractAddress: tx.contractAddress,
+              tokenId: tx.tokenID,
+              createdAt: new Date().toISOString(),
+              claimed: tx.claimed || false
+            }));
+            
+            setInboxTransactions(mappedTransactions);
+            toast.success('Inbox refreshed successfully');
+          } else {
+            console.log('No transactions found or invalid format');
+            setInboxTransactions([]);
+            toast.success('No new transactions found');
+          }
+        } else {
+          console.error('Failed to fetch account data');
+          setInboxTransactions([]);
+          toast.error('Failed to fetch transactions');
+        }
       } else {
+        console.error('Failed to monitor inbox');
+        setInboxTransactions([]);
         toast.error('Failed to monitor inbox');
       }
     } catch (error) {
       console.error('Error refreshing inbox transactions:', error);
+      setInboxTransactions([]);
       toast.error('Error refreshing inbox transactions');
     } finally {
       setIsLoadingInbox(false);
@@ -583,8 +636,9 @@ const AccountDetailsPage: NextPage = () => {
                 <h1 className={styles.title}>{accountDetails.name}</h1>
                 <div style={{ display: 'flex', gap: '12px' }}>
                   <button 
-                    style={buttonStyle}
+                    style={{...buttonStyle, opacity: 0.5}} // Disabled for now
                     onClick={() => setIsTransferModalOpen(true)}
+                    disabled={true}
                   >
                     PASS Transfer
                   </button>
@@ -1039,20 +1093,35 @@ const AccountDetailsPage: NextPage = () => {
 
                 {activeTab === 'inbox' && (
                   <div>
+                    {(() => {
+                      // Debug logging
+                      const filteredTransactions = inboxTransactions.filter(tx => tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase());
+                      console.log('UI Debug - All inbox transactions:', inboxTransactions);
+                      console.log('UI Debug - Connected address:', connectedAddress);
+                      console.log('UI Debug - Filtered transactions:', filteredTransactions);
+                      console.log('UI Debug - Filter condition:', inboxTransactions.map(tx => ({
+                        fromAddress: tx.fromAddress,
+                        connectedAddress: connectedAddress,
+                        matches: tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()
+                      })));
+                      
+                      return null;
+                    })()}
+                    
                     {isLoadingInbox ? (
                       <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>Loading transactions...</p>
-                    ) : inboxTransactions.filter(tx => tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()).length === 0 ? (
+                    ) : inboxTransactions.filter(tx => tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()).length === 0 ? (
                       <p style={{ color: '#666' }}>No incoming transactions from your connected wallet yet</p>
                     ) : (
                       <div style={{ overflowY: 'auto', maxHeight: '1200px' }}>
                         {inboxTransactions
-                          .filter(tx => tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase())
+                          .filter(tx => tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase())
                           .map((tx, index) => (
                           <div
                             key={tx.hash}
                             style={{
                               padding: '16px',
-                              borderBottom: index < inboxTransactions.filter(tx => tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()).length - 1 ? '1px solid #eaeaea' : 'none',
+                              borderBottom: index < inboxTransactions.filter(tx => tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase()).length - 1 ? '1px solid #eaeaea' : 'none',
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'flex-start'

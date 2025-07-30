@@ -14,9 +14,18 @@ type AccountData = {
   }>;
   transactions: Array<{
     hash: string;
-    type: 'send' | 'receive';
-    amount: string;
-    timestamp: string;
+    blockNumber: string;
+    tokenType: string;
+    value: string;
+    from: string;
+    to: string;
+    tokenSymbol: string;
+    tokenName: string;
+    tokenDecimal: string;
+    contractAddress?: string;
+    tokenID?: string;
+    claimed: boolean;
+    createdAt: string;
   }>;
   signedMessages: Array<{
     message: string;
@@ -84,6 +93,14 @@ export default async function handler(
       },
       include: {
         signedMessages: true,
+        inboxTransactions: {
+          include: {
+            asset: true,
+          },
+          orderBy: {
+            blockNumber: 'desc',
+          },
+        },
       },
     });
 
@@ -122,20 +139,22 @@ export default async function handler(
           value: '$1,150.00',
         }
       ],
-      transactions: [
-        {
-          hash: '0x123...abc',
-          type: 'send',
-          amount: '0.1 ETH',
-          timestamp: '2024-02-17 14:30',
-        },
-        {
-          hash: '0x456...def',
-          type: 'receive',
-          amount: '0.5 ETH',
-          timestamp: '2024-02-17 12:15',
-        },
-      ],
+      transactions: (wallet?.inboxTransactions || [])
+        .map((tx: any) => ({
+          hash: tx.transactionHash,
+          blockNumber: tx.blockNumber,
+          tokenType: tx.asset?.tokenType || 'ETH',
+          value: tx.amount,
+          from: tx.fromAddress,
+          to: tx.toAddress,
+          tokenSymbol: tx.asset?.symbol || 'ETH',
+          tokenName: tx.asset?.name || 'Ethereum',
+          tokenDecimal: tx.asset?.decimals?.toString() || '18',
+          contractAddress: tx.asset?.contractAddress,
+          tokenID: tx.asset?.tokenId,
+          claimed: tx.claimed,
+          createdAt: tx.createdAt.toISOString(),
+        })),
       signedMessages: (wallet?.signedMessages || [])
         .filter((msg: any) => 
           connectedAddress ? 
