@@ -108,6 +108,11 @@ pub enum Command {
         domain: String,
         message: String,
     },
+    
+    // Asset operations
+    GetAssets { 
+        wallet_address: String,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -569,6 +574,24 @@ pub fn parse_command(command: &str) -> Result<Response, String> {
                     success: false,
                     data: None,
                     error: Some(format!("Failed to sign GSM: {}", e)),
+                }),
+            }
+        }
+
+        Command::GetAssets { wallet_address } => {
+            match PASS_WALLET_MANAGER.get_wallet_assets(&wallet_address) {
+                Ok(assets) => Ok(Response {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "wallet_address": wallet_address,
+                        "assets": assets
+                    })),
+                    error: None,
+                }),
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to get assets: {}", e)),
                 }),
             }
         }

@@ -471,6 +471,14 @@ impl PassWalletManager {
         
         Ok(wallet_state.get_state_summary())
     }
+
+    /// Get all assets from a wallet's asset ledger
+    pub fn get_wallet_assets(&self, wallet_address: &str) -> Result<HashMap<String, Asset>> {
+        let wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        Ok(wallet_state.assets)
+    }
 }
 
 #[cfg(test)]

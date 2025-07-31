@@ -131,6 +131,11 @@ struct GetWalletStateRequest {
     wallet_address: String,
 }
 
+#[derive(Deserialize)]
+struct GetAssetsRequest {
+    wallet_address: String,
+}
+
 // Command: Generate account
 async fn generate_handler(Json(_args): Json<Option<serde_json::Value>>) -> Result<JsonResponse<GenerateResponse>, (StatusCode, JsonResponse<ErrorResponse>)> {
     println!("Generating account");
@@ -307,6 +312,37 @@ async fn get_wallet_state_handler(Json(request): Json<GetWalletStateRequest>) ->
     
     let command = serde_json::json!({
         "GetPassWalletState": {
+            "wallet_address": request.wallet_address
+        }
+    });
+    
+    match send_command_to_enclave(cid, port, &command.to_string()).await {
+        Ok(response) => {
+            if response.success {
+                Ok(JsonResponse(response.data.unwrap_or(serde_json::json!({}))))
+            } else {
+                Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+                    error: response.error.unwrap_or_else(|| "Unknown error".to_string()),
+                })))
+            }
+        }
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: format!("Enclave communication error: {}", e),
+        })))
+    }
+}
+
+// Get assets from wallet ledger
+async fn get_assets_handler(Json(request): Json<GetAssetsRequest>) -> Result<JsonResponse<serde_json::Value>, (StatusCode, JsonResponse<ErrorResponse>)> {
+    let cid = std::env::var("ENCLAVE_CID").unwrap_or_else(|_| "19".to_string()).parse::<u32>()
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: "Invalid ENCLAVE_CID".to_string(),
+        })))?;
+    
+    let port = 7777u32;
+    
+    let command = serde_json::json!({
+        "GetAssets": {
             "wallet_address": request.wallet_address
         }
     });
@@ -712,6 +748,7 @@ pub async fn run_http_server(port: u16) -> Result<(), Box<dyn std::error::Error>
         .route("/pass/wallets", get(list_pass_wallets_handler))
         .route("/pass/wallets/state", post(get_wallet_state_handler))
         .route("/pass/wallets/assets", post(add_asset_handler))
+        .route("/pass/wallets/assets/list", post(get_assets_handler))
         .route("/pass/wallets/subaccounts", post(add_subaccount_handler))
         .route("/pass/wallets/deposits", post(inbox_deposit_handler))
         .route("/pass/wallets/claims", post(claim_inbox_handler))

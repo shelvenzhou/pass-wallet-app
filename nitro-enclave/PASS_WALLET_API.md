@@ -175,6 +175,51 @@ POST /pass/wallets/assets
 }
 ```
 
+#### Get Assets
+```
+POST /pass/wallets/assets/list
+```
+
+**Request Body:**
+```json
+{
+  "wallet_address": "0x1234567890abcdef1234567890abcdef12345678"
+}
+```
+
+**Response:**
+```json
+{
+  "wallet_address": "0x1234567890abcdef1234567890abcdef12345678",
+  "assets": {
+    "eth_mainnet": {
+      "token_type": "ETH",
+      "contract_address": null,
+      "token_id": null,
+      "symbol": "ETH",
+      "name": "Ethereum",
+      "decimals": 18
+    },
+    "usdc_mainnet": {
+      "token_type": "ERC20",
+      "contract_address": "0xa0b86a33e6776e7bb8c4c9f8d9b2d5f1c4e3f1d2",
+      "token_id": null,
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6
+    },
+    "nft_collection": {
+      "token_type": "ERC721",
+      "contract_address": "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d",
+      "token_id": "1234",
+      "symbol": "BAYC",
+      "name": "Bored Ape Yacht Club",
+      "decimals": 0
+    }
+  }
+}
+```
+
 #### Add Subaccount
 ```
 POST /pass/wallets/subaccounts
@@ -475,7 +520,16 @@ Common HTTP status codes:
      }'
    ```
 
-4. **Make a deposit**
+4. **List all assets in the wallet**
+   ```bash
+   curl -X POST http://localhost:5000/pass/wallets/assets/list \
+     -H "Content-Type: application/json" \
+     -d '{
+       "wallet_address": "0x1234567890abcdef1234567890abcdef12345678"
+     }'
+   ```
+
+5. **Make a deposit**
    ```bash
    curl -X POST http://localhost:5000/pass/wallets/deposits \
      -H "Content-Type: application/json" \
@@ -491,7 +545,7 @@ Common HTTP status codes:
      }'
    ```
 
-5. **Claim the deposit**
+6. **Claim the deposit**
    ```bash
    curl -X POST http://localhost:5000/pass/wallets/claims \
      -H "Content-Type: application/json" \
@@ -502,7 +556,7 @@ Common HTTP status codes:
      }'
    ```
 
-6. **Check balance**
+7. **Check balance**
    ```bash
    curl -X POST http://localhost:5000/pass/wallets/balance \
      -H "Content-Type: application/json" \

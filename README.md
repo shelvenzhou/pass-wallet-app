@@ -74,6 +74,20 @@ For server deployment, see `Makefile` for deployment commands.
 
 Visit `http://localhost:3000` to use the application.
 
+## API Documentation
+
+For detailed HTTP API documentation, see [`nitro-enclave/PASS_WALLET_API.md`](nitro-enclave/PASS_WALLET_API.md). The API provides RESTful endpoints for:
+
+- **Wallet Management**: Create and list PASS wallets
+- **Asset Management**: Add assets and retrieve all assets in the ledger
+- **Subaccount Management**: Create and manage wallet subaccounts
+- **Deposit/Withdrawal Operations**: Handle external deposits and withdrawals
+- **Internal Transfers**: Transfer assets between subaccounts
+- **Balance Queries**: Check individual and subaccount balances
+- **Message Signing**: Sign messages using wallet keys
+
+The HTTP server runs on port 5000 by default and communicates with the Nitro Enclave via VSOCK for secure operations.
+
 ## Development
 
 ### Architecture
