@@ -198,7 +198,12 @@ POST /pass/wallets/assets/list
       "token_id": null,
       "symbol": "ETH",
       "name": "Ethereum",
-      "decimals": 18
+      "decimals": 18,
+      "total_balance": 5000000000000000000,
+      "subaccount_balances": {
+        "main_account": 3000000000000000000,
+        "trading_account": 2000000000000000000
+      }
     },
     "usdc_mainnet": {
       "token_type": "ERC20",
@@ -206,7 +211,11 @@ POST /pass/wallets/assets/list
       "token_id": null,
       "symbol": "USDC",
       "name": "USD Coin",
-      "decimals": 6
+      "decimals": 6,
+      "total_balance": 1000000000,
+      "subaccount_balances": {
+        "main_account": 1000000000
+      }
     },
     "nft_collection": {
       "token_type": "ERC721",
@@ -214,7 +223,11 @@ POST /pass/wallets/assets/list
       "token_id": "1234",
       "symbol": "BAYC",
       "name": "Bored Ape Yacht Club",
-      "decimals": 0
+      "decimals": 0,
+      "total_balance": 1,
+      "subaccount_balances": {
+        "collectibles_account": 1
+      }
     }
   }
 }

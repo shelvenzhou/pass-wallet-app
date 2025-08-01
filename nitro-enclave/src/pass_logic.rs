@@ -472,12 +472,56 @@ impl PassWalletManager {
         Ok(wallet_state.get_state_summary())
     }
 
-    /// Get all assets from a wallet's asset ledger
-    pub fn get_wallet_assets(&self, wallet_address: &str) -> Result<HashMap<String, Asset>> {
+    /// Get all assets from a wallet's asset ledger with total balances across all subaccounts
+    pub fn get_wallet_assets(&self, wallet_address: &str) -> Result<serde_json::Value> {
         let wallet_state = self.get_wallet(wallet_address)
             .ok_or_else(|| anyhow!("Wallet not found"))?;
         
-        Ok(wallet_state.assets)
+        let mut assets_with_balances = serde_json::Map::new();
+        
+        for (asset_id, asset) in &wallet_state.assets {
+            // Calculate total balance for this asset across all subaccounts
+            let total_balance: u64 = wallet_state.balances
+                .iter()
+                .filter_map(|(balance_key, amount)| {
+                    if let Some((_subaccount_id, balance_asset_id)) = balance_key.split_once(':') {
+                        if balance_asset_id == asset_id {
+                            Some(*amount)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .sum();
+
+            // Get per-subaccount balances for this asset
+            let mut subaccount_balances = serde_json::Map::new();
+            for (balance_key, amount) in &wallet_state.balances {
+                if let Some((subaccount_id, balance_asset_id)) = balance_key.split_once(':') {
+                    if balance_asset_id == asset_id && *amount > 0 {
+                        subaccount_balances.insert(subaccount_id.to_string(), serde_json::Value::Number(serde_json::Number::from(*amount)));
+                    }
+                }
+            }
+
+            assets_with_balances.insert(asset_id.clone(), serde_json::json!({
+                "token_type": asset.token_type,
+                "contract_address": asset.contract_address,
+                "token_id": asset.token_id,
+                "symbol": asset.symbol,
+                "name": asset.name,
+                "decimals": asset.decimals,
+                "total_balance": total_balance,
+                "subaccount_balances": subaccount_balances
+            }));
+        }
+        
+        Ok(serde_json::json!({
+            "wallet_address": wallet_address,
+            "assets": assets_with_balances
+        }))
     }
 }
 

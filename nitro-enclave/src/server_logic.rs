@@ -580,12 +580,9 @@ pub fn parse_command(command: &str) -> Result<Response, String> {
 
         Command::GetAssets { wallet_address } => {
             match PASS_WALLET_MANAGER.get_wallet_assets(&wallet_address) {
-                Ok(assets) => Ok(Response {
+                Ok(assets_with_balances) => Ok(Response {
                     success: true,
-                    data: Some(serde_json::json!({
-                        "wallet_address": wallet_address,
-                        "assets": assets
-                    })),
+                    data: Some(assets_with_balances),
                     error: None,
                 }),
                 Err(e) => Ok(Response {
