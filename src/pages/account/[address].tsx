@@ -602,11 +602,44 @@ const AccountDetailsPage: NextPage = () => {
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
-      await navigator.clipboard.writeText(text);
-      toast.success(`${label} copied to clipboard!`);
+      // Try modern clipboard API first
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        toast.success(`${label} copied to clipboard!`);
+        return;
+      }
+      
+      // Fallback for older browsers or non-secure contexts
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      
+      if (successful) {
+        toast.success(`${label} copied to clipboard!`);
+      } else {
+        throw new Error('execCommand failed');
+      }
     } catch (err) {
       console.error('Failed to copy: ', err);
-      toast.error('Failed to copy to clipboard');
+      
+      // As a last resort, show the text in a prompt for manual copying
+      try {
+        if (window.prompt) {
+          window.prompt('Copy to clipboard: Ctrl+C, Enter', text);
+        } else {
+          toast.error('Copy failed. Please manually select and copy the text.');
+        }
+      } catch (promptErr) {
+        toast.error('Failed to copy to clipboard. Please copy manually.');
+      }
     }
   };
 
