@@ -94,6 +94,36 @@ export default async function handler(
       }
     }
 
+    // Ensure the deposit exists in the enclave before claiming
+    if (transaction.asset) {
+      console.log('Creating deposit in enclave for transaction:', transactionHash);
+      
+      const depositResponse = await fetch(`${ENCLAVE_URL}/pass/wallets/deposits`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wallet_address: walletAddress,
+          asset_id: `${transaction.asset.symbol.toLowerCase()}_mainnet`,
+          amount: Number(transaction.amount),
+          deposit_id: transactionHash,
+          transaction_hash: transactionHash,
+          block_number: transaction.blockNumber,
+          from_address: transaction.fromAddress,
+          to_address: transaction.toAddress,
+        }),
+      });
+
+      // Deposit creation failure is not critical - it might already exist
+      if (!depositResponse.ok) {
+        const errorText = await depositResponse.text();
+        console.log('Deposit creation response (may already exist):', errorText);
+      } else {
+        console.log('Deposit successfully created in enclave');
+      }
+    }
+
     // Call enclave to perform the claim
     const enclaveResponse = await fetch(`${ENCLAVE_URL}/pass/wallets/claims`, {
       method: 'POST',
