@@ -105,7 +105,7 @@ export default async function handler(
         },
         body: JSON.stringify({
           wallet_address: walletAddress,
-          asset_id: `${transaction.asset.symbol.toLowerCase()}_mainnet`,
+          asset_id: `${transaction.asset.symbol.toLowerCase()}_mainnet`, // Use consistent asset ID format
           amount: Number(transaction.amount),
           deposit_id: transactionHash,
           transaction_hash: transactionHash,
