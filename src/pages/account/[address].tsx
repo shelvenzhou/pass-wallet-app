@@ -7,6 +7,7 @@ import { useAccount } from 'wagmi';
 import { useState, useEffect } from 'react';
 import TransferModal from '../../components/TransferModal';
 import MessageModal from '../../components/MessageModal';
+import AssetTransferModal from '../../components/AssetTransferModal';
 import { MessageRequest } from '../../types';
 import DomainTransferModal from '../../components/DomainTransferModal';
 
@@ -105,7 +106,7 @@ const AccountDetailsPage: NextPage = () => {
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
   const [isDomainTransferModalOpen, setIsDomainTransferModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'messages' | 'inbox'>('messages');
+  const [activeTab, setActiveTab] = useState<'assets' | 'messages' | 'inbox'>('assets');
   const [accountDetails, setAccountDetails] = useState<{
     name: string;
     balance: string;
@@ -122,6 +123,10 @@ const AccountDetailsPage: NextPage = () => {
   const [activeSessions, setActiveSessions] = useState<any[]>([]);
   const [inboxTransactions, setInboxTransactions] = useState<InboxTransaction[]>([]);
   const [isLoadingInbox, setIsLoadingInbox] = useState(false);
+  const [subaccountAssets, setSubaccountAssets] = useState<any>(null);
+  const [isLoadingAssets, setIsLoadingAssets] = useState(false);
+  const [isAssetTransferModalOpen, setIsAssetTransferModalOpen] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState<{assetId: string, asset: any} | null>(null);
 
   const handleApproveProposal = async () => {
     console.log("Approve proposal");
@@ -522,6 +527,48 @@ const AccountDetailsPage: NextPage = () => {
       toast.error(`Failed to claim: ${errorData.error || 'Unknown error'}`);
     }
   };
+
+  const fetchSubaccountAssets = async () => {
+    if (!accountAddress || !connectedAddress) {
+      return;
+    }
+    
+    try {
+      setIsLoadingAssets(true);
+      
+      // Call through Next.js API route with connected address for filtering
+      const response = await fetch('/api/assets/list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          wallet_address: accountAddress,
+          connected_address: connectedAddress 
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch assets: ${response.status} ${errorText}`);
+      }
+      
+      const assetsData = await response.json();
+      console.log('Filtered enclave assets data:', assetsData);
+      setSubaccountAssets(assetsData);
+    } catch (error) {
+      console.error('Error fetching subaccount assets:', error);
+      setSubaccountAssets(null);
+      toast.error(`Failed to fetch subaccount assets: ${error.message}`);
+    } finally {
+      setIsLoadingAssets(false);
+    }
+  };
+
+  // Fetch subaccount assets when component loads
+  useEffect(() => {
+    if (router.isReady && accountAddress && connectedAddress) {
+      fetchSubaccountAssets();
+    }
+  }, [router.isReady, accountAddress, connectedAddress]);
   
 
   const cardStyle = {
@@ -668,13 +715,7 @@ const AccountDetailsPage: NextPage = () => {
               <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h1 className={styles.title}>{accountDetails.name}</h1>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                  <button 
-                    style={{...buttonStyle, opacity: 0.5}} // Disabled for now
-                    onClick={() => setIsTransferModalOpen(true)}
-                    disabled={true}
-                  >
-                    PASS Transfer
-                  </button>
+
                   <button 
                     style={{...buttonStyle, backgroundColor: '#4CAF50'}}
                     onClick={() => {
@@ -1042,6 +1083,12 @@ const AccountDetailsPage: NextPage = () => {
               <div style={cardStyle}>
                 <div style={{ borderBottom: '1px solid #eaeaea', marginBottom: '20px' }}>
                   <button
+                    style={activeTab === 'assets' ? activeTabStyle : tabStyle}
+                    onClick={() => setActiveTab('assets')}
+                  >
+                    Subaccount Assets
+                  </button>
+                  <button
                     style={activeTab === 'messages' ? activeTabStyle : tabStyle}
                     onClick={() => setActiveTab('messages')}
                   >
@@ -1054,6 +1101,133 @@ const AccountDetailsPage: NextPage = () => {
                     Inbox Transactions
                   </button>
                 </div>
+
+                {activeTab === 'assets' && (
+                  <div>
+                    <div style={{ marginBottom: '16px', textAlign: 'right' }}>
+                      <button
+                        style={{
+                          ...buttonStyle,
+                          backgroundColor: '#28a745',
+                          padding: '8px 16px',
+                          fontSize: '0.9rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginLeft: 'auto'
+                        }}
+                        onClick={fetchSubaccountAssets}
+                        disabled={isLoadingAssets}
+                      >
+                        <FontAwesomeIcon 
+                          icon={faSync} 
+                          spin={isLoadingAssets}
+                          style={{ fontSize: '0.8rem' }}
+                        />
+                        {isLoadingAssets ? 'Loading...' : 'Refresh Assets'}
+                      </button>
+                    </div>
+
+                    {isLoadingAssets ? (
+                      <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>Loading assets...</p>
+                    ) : !subaccountAssets || !subaccountAssets.assets ? (
+                      <p style={{ color: '#666' }}>No assets found in this wallet</p>
+                    ) : Object.keys(subaccountAssets.assets).length === 0 ? (
+                      <p style={{ color: '#666' }}>No assets registered yet</p>
+                    ) : (
+                      <div style={{ overflowY: 'auto', maxHeight: '600px' }}>
+                        {Object.entries(subaccountAssets.assets).map(([assetId, asset]: [string, any]) => (
+                          <div
+                            key={assetId}
+                            style={{
+                              padding: '16px',
+                              borderBottom: '1px solid #eaeaea',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'flex-start'
+                            }}
+                          >
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                                <span
+                                  style={{
+                                    backgroundColor: getTokenTypeColor(asset.token_type),
+                                    color: 'white',
+                                    padding: '4px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '500',
+                                    marginRight: '12px'
+                                  }}
+                                >
+                                  {asset.token_type}
+                                </span>
+                                <div style={{ fontWeight: '500', fontSize: '1.1rem' }}>
+                                  {formatAmount(asset.total_balance.toString(), asset.decimals, asset.symbol)}
+                                </div>
+                              </div>
+                              
+                              <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                <strong>{asset.name}</strong>
+                                {asset.token_id && ` (Token ID: ${asset.token_id})`}
+                              </div>
+                              
+                              {asset.contract_address && (
+                                <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                  Contract: <span style={{ fontFamily: 'monospace' }}>{asset.contract_address}</span>
+                                </div>
+                              )}
+                              
+                              {/* <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                <strong>Subaccount Balances:</strong>
+                              </div>
+                              {Object.entries(asset.subaccount_balances || {}).map(([subaccountId, balance]: [string, any]) => (
+                                <div key={subaccountId} style={{ color: '#666', fontSize: '0.8rem', marginLeft: '16px' }}>
+                                  {subaccountId}: {formatAmount(balance.toString(), asset.decimals, asset.symbol)}
+                                </div>
+                              ))} */}
+                            </div>
+                            
+                            <div style={{ marginLeft: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <button
+                                style={{
+                                  ...buttonStyle,
+                                  backgroundColor: '#007bff',
+                                  padding: '6px 12px',
+                                  fontSize: '0.8rem',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  color: 'white'
+                                }}
+                                onClick={() => {
+                                  setSelectedAsset({ assetId, asset });
+                                  setIsAssetTransferModalOpen(true);
+                                }}
+                              >
+                                Transfer
+                              </button>
+                              <button
+                                style={{
+                                  ...buttonStyle,
+                                  backgroundColor: '#6c757d',
+                                  padding: '6px 12px',
+                                  fontSize: '0.8rem',
+                                  border: 'none',
+                                  cursor: 'not-allowed',
+                                  color: 'white',
+                                  opacity: 0.6
+                                }}
+                                disabled={true}
+                              >
+                                Withdraw
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {activeTab === 'inbox' && (
                   <div style={{ marginBottom: '16px', textAlign: 'right' }}>
@@ -1278,6 +1452,19 @@ const AccountDetailsPage: NextPage = () => {
         onSign={handleApproveProposal}
         onReject={handleRejectProposal}
         messageRequest={messageRequest || undefined}
+      />
+
+      <AssetTransferModal
+        isOpen={isAssetTransferModalOpen}
+        onClose={() => setIsAssetTransferModalOpen(false)}
+        assetId={selectedAsset?.assetId || ''}
+        asset={selectedAsset?.asset || {}}
+        walletAddress={accountAddress as string}
+        connectedAddress={connectedAddress as string}
+        onTransferComplete={() => {
+          fetchSubaccountAssets();
+          setSelectedAsset(null);
+        }}
       />
     </div>
   );
