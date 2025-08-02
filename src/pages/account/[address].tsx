@@ -129,6 +129,9 @@ const AccountDetailsPage: NextPage = () => {
   const [selectedAsset, setSelectedAsset] = useState<{assetId: string, asset: any} | null>(null);
   const [provenanceData, setProvenanceData] = useState<any>(null);
   const [isLoadingProvenance, setIsLoadingProvenance] = useState(false);
+  const [claimingTxId, setClaimingTxId] = useState<string | null>(null);
+
+
 
   const handleApproveProposal = async () => {
     console.log("Approve proposal");
@@ -556,10 +559,10 @@ const AccountDetailsPage: NextPage = () => {
       const assetsData = await response.json();
       console.log('Filtered enclave assets data:', assetsData);
       setSubaccountAssets(assetsData);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error fetching subaccount assets:', error);
       setSubaccountAssets(null);
-      toast.error(`Failed to fetch subaccount assets: ${error.message}`);
+      toast.error(`Failed to fetch subaccount assets: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoadingAssets(false);
     }
@@ -592,10 +595,10 @@ const AccountDetailsPage: NextPage = () => {
       const provenanceResponse = await response.json();
       console.log('Provenance data:', provenanceResponse);
       setProvenanceData(provenanceResponse);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error fetching provenance data:', error);
       setProvenanceData(null);
-      toast.error(`Failed to fetch provenance data: ${error.message}`);
+      toast.error(`Failed to fetch provenance data: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsLoadingProvenance(false);
     }
@@ -757,19 +760,8 @@ const AccountDetailsPage: NextPage = () => {
         ) : accountDetails ? (
           <>
             <div style={{ width: '100%', maxWidth: '800px' }}>
-              <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ marginBottom: '2rem' }}>
                 <h1 className={styles.title}>{accountDetails.name}</h1>
-                <div style={{ display: 'flex', gap: '12px' }}>
-
-                  <button 
-                    style={{...buttonStyle, backgroundColor: '#4CAF50'}}
-                    onClick={() => {
-                      setIsDomainTransferModalOpen(true);
-                    }}
-                  >
-                    Transfer Domain
-                  </button>
-                </div>
               </div>
               
               <div style={{
@@ -1125,7 +1117,9 @@ const AccountDetailsPage: NextPage = () => {
                   )}
                 </div>
               </div>
+              {/* Assets Section */}
               <div style={cardStyle}>
+                <h2 style={{ marginBottom: '20px', fontSize: '1.5rem', fontWeight: '600' }}>Assets</h2>
                 <div style={{ borderBottom: '1px solid #eaeaea', marginBottom: '20px' }}>
                   <button
                     style={activeTab === 'assets' ? activeTabStyle : tabStyle}
@@ -1134,22 +1128,16 @@ const AccountDetailsPage: NextPage = () => {
                     Subaccount Assets
                   </button>
                   <button
-                    style={activeTab === 'messages' ? activeTabStyle : tabStyle}
-                    onClick={() => setActiveTab('messages')}
+                    style={activeTab === 'provenance' ? activeTabStyle : tabStyle}
+                    onClick={() => setActiveTab('provenance')}
                   >
-                    Message Signing History
+                    Asset Provenance Log
                   </button>
                   <button
                     style={activeTab === 'inbox' ? activeTabStyle : tabStyle}
                     onClick={() => setActiveTab('inbox')}
                   >
                     Inbox Transactions
-                  </button>
-                  <button
-                    style={activeTab === 'provenance' ? activeTabStyle : tabStyle}
-                    onClick={() => setActiveTab('provenance')}
-                  >
-                    Asset Provenance Log
                   </button>
                 </div>
 
@@ -1665,7 +1653,192 @@ const AccountDetailsPage: NextPage = () => {
                     )}
                   </div>
                 )}
+
+                {activeTab === 'inbox' && (
+                  <div>
+                    <div style={{ marginBottom: '16px', textAlign: 'right' }}>
+                      <button
+                        style={{
+                          ...buttonStyle,
+                          backgroundColor: '#28a745',
+                          padding: '8px 16px',
+                          fontSize: '0.9rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginLeft: 'auto'
+                        }}
+                        onClick={refreshInboxTransactions}
+                        disabled={isLoadingInbox}
+                      >
+                        <FontAwesomeIcon 
+                          icon={faSync} 
+                          spin={isLoadingInbox}
+                          style={{ fontSize: '0.8rem' }}
+                        />
+                        {isLoadingInbox ? 'Loading...' : 'Refresh Inbox'}
+                      </button>
+                    </div>
+
+                    {inboxTransactions.length === 0 ? (
+                      <p style={{ color: '#666' }}>No transactions in the inbox yet</p>
+                    ) : (
+                      <div style={{
+                        border: '1px solid #e9ecef',
+                        borderRadius: '8px',
+                        overflow: 'hidden'
+                      }}>
+                        {inboxTransactions.map((tx, index) => (
+                          <div
+                            key={tx.hash}
+                            style={{
+                              padding: '16px',
+                              borderBottom: index < inboxTransactions.length - 1 ? '1px solid #eaeaea' : 'none',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              backgroundColor: 'white'
+                            }}
+                          >
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                                <span style={{ 
+                                  fontWeight: '500', 
+                                  marginRight: '12px',
+                                  fontSize: '1rem'
+                                }}>
+                                  {formatAmount(tx.amount.toString(), tx.decimals, tx.symbol)}
+                                </span>
+                                <span
+                                  style={{
+                                    backgroundColor: tx.claimed ? '#28a745' : '#ffc107',
+                                    color: tx.claimed ? 'white' : '#212529',
+                                    padding: '4px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '500'
+                                  }}
+                                >
+                                  {tx.claimed ? 'Claimed' : 'Pending'}
+                                </span>
+                              </div>
+                              
+                              <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                <strong>From:</strong> {tx.fromAddress}
+                              </div>
+                              
+                              <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                <strong>Asset:</strong> {tx.name} ({tx.symbol})
+                              </div>
+                              
+                              <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                <strong>Time:</strong> {new Date(tx.createdAt).toLocaleString()}
+                              </div>
+
+                              <div style={{ color: '#666', fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                                Tx: {tx.hash}
+                              </div>
+                            </div>
+
+                            {!tx.claimed && (
+                              <button
+                                style={{
+                                  ...buttonStyle,
+                                  backgroundColor: '#007bff',
+                                  marginLeft: '16px',
+                                  padding: '8px 16px'
+                                }}
+                                onClick={() => handleClaim(tx.hash)}
+                                disabled={claimingTxId === tx.hash}
+                              >
+                                {claimingTxId === tx.hash ? 'Claiming...' : 'Claim'}
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
+
+              {/* Messages Section */}
+              <div style={cardStyle}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  marginBottom: '20px'
+                }}>
+                  <h2 style={{ fontSize: '1.5rem', fontWeight: '600', margin: '0' }}>Messages</h2>
+                  <button 
+                    style={{...buttonStyle, backgroundColor: '#4CAF50'}}
+                    onClick={() => {
+                      setIsDomainTransferModalOpen(true);
+                    }}
+                  >
+                    Transfer Domain
+                  </button>
+                </div>
+
+                <div>
+                  <h3 style={{ 
+                    marginBottom: '16px', 
+                    fontSize: '1.2rem', 
+                    fontWeight: '500',
+                    color: '#333'
+                  }}>
+                    Message Signing History
+                  </h3>
+                  {accountDetails.signedMessages.length === 0 ? (
+                    <p style={{ color: '#666' }}>No signed messages yet</p>
+                  ) : (
+                    <div style={{
+                      border: '1px solid #e9ecef',
+                      borderRadius: '8px',
+                      overflow: 'hidden'
+                    }}>
+                      {accountDetails.signedMessages.map((msg, index) => (
+                        <div
+                          key={index}
+                          style={{
+                            padding: '16px',
+                            borderBottom: index < accountDetails.signedMessages.length - 1 ? '1px solid #eaeaea' : 'none',
+                            backgroundColor: 'white'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <div style={{ fontWeight: '500' }}>{msg.domainUrl}</div>
+                            <div style={{ color: '#666', fontSize: '0.9rem' }}>
+                              {new Date(msg.createdAt).toLocaleString()}
+                            </div>
+                          </div>
+                          <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '8px' }}>
+                            Signer: {msg.signer}
+                          </div>
+                          <div style={{ 
+                            background: '#f5f5f5', 
+                            padding: '12px', 
+                            borderRadius: '6px',
+                            fontSize: '0.9rem',
+                            wordBreak: 'break-all'
+                          }}>
+                            <div style={{ marginBottom: '8px' }}>Message: {msg.message}</div>
+                            <div>Signature: {msg.signature.substring(0, 32)}...</div>
+                          </div>
+                          {msg.sessionId && (
+                            <div style={{ color: '#666', fontSize: '0.9rem', marginTop: '8px' }}>
+                              Session ID: {msg.sessionId}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+
             </div>
           </>
         ) : (
