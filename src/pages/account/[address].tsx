@@ -591,7 +591,7 @@ const AccountDetailsPage: NextPage = () => {
       
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to fetch provenance data: ${response.status} ${errorText}`);
+        toast.error(`Failed to fetch provenance data: ${response.status} ${errorText}`);
       }
       
       const provenanceResponse = await response.json();
@@ -1272,32 +1272,6 @@ const AccountDetailsPage: NextPage = () => {
                   </div>
                 )}
 
-                {activeTab === 'inbox' && (
-                  <div style={{ marginBottom: '16px', textAlign: 'right' }}>
-                    <button
-                      style={{
-                        ...buttonStyle,
-                        backgroundColor: '#28a745',
-                        padding: '8px 16px',
-                        fontSize: '0.9rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        marginLeft: 'auto'
-                      }}
-                      onClick={refreshInboxTransactions}
-                      disabled={isLoadingInbox}
-                    >
-                      <FontAwesomeIcon 
-                        icon={faSync} 
-                        spin={isLoadingInbox}
-                        style={{ fontSize: '0.8rem' }}
-                      />
-                      {isLoadingInbox ? 'Loading...' : 'Refresh Inbox'}
-                    </button>
-                  </div>
-                )}
-
                 {activeTab === 'messages' && (
                   <div>
                     {accountDetails.signedMessages.length === 0 ? (
@@ -1343,6 +1317,30 @@ const AccountDetailsPage: NextPage = () => {
 
                 {activeTab === 'inbox' && (
                   <div>
+                    <div style={{ marginBottom: '16px', textAlign: 'right' }}>
+                      <button
+                        style={{
+                          ...buttonStyle,
+                          backgroundColor: '#28a745',
+                          padding: '8px 16px',
+                          fontSize: '0.9rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginLeft: 'auto'
+                        }}
+                        onClick={refreshInboxTransactions}
+                        disabled={isLoadingInbox}
+                      >
+                        <FontAwesomeIcon 
+                          icon={faSync} 
+                          spin={isLoadingInbox}
+                          style={{ fontSize: '0.8rem' }}
+                        />
+                        {isLoadingInbox ? 'Loading...' : 'Refresh Inbox'}
+                      </button>
+                    </div>
+
                     {(() => {
                       // Debug logging
                       const filteredTransactions = inboxTransactions.filter(tx => tx.fromAddress && tx.fromAddress.toLowerCase() === connectedAddress?.toLowerCase());
@@ -1658,7 +1656,7 @@ const AccountDetailsPage: NextPage = () => {
                   </div>
                 )}
 
-                {activeTab === 'inbox' && (
+                {/* {activeTab === 'inbox' && (
                   <div>
                     <div style={{ marginBottom: '16px', textAlign: 'right' }}>
                       <button
@@ -1762,8 +1760,8 @@ const AccountDetailsPage: NextPage = () => {
                         ))}
                       </div>
                     )}
-                  </div>
-                )}
+                  </div> */}
+                {/* } */}
               </div>
 
               {/* Messages Section */}

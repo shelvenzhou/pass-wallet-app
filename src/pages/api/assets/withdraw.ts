@@ -26,10 +26,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // Find the connected subaccount
+    // First find the wallet
+    const wallet = await prisma.passWallet.findUnique({
+      where: {
+        address: walletAddress
+      }
+    });
+
+    if (!wallet) {
+      return res.status(404).json({ error: 'Wallet not found' });
+    }
+
+    // Then find the connected subaccount
     const subaccount = await prisma.subaccount.findFirst({
       where: {
-        walletAddress: walletAddress,
+        walletId: wallet.id,
         address: connectedAddress
       }
     });
