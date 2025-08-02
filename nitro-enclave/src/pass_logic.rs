@@ -3,6 +3,30 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use anyhow::{Result, anyhow};
 use crate::key_manager::EnclaveKMS;
+// Helper function to convert string address to bytes
+fn parse_address(addr_str: &str) -> Result<Vec<u8>> {
+    let clean_addr = addr_str.strip_prefix("0x").unwrap_or(addr_str);
+    if clean_addr.len() != 40 {
+        return Err(anyhow!("Invalid address length"));
+    }
+    hex::decode(clean_addr).map_err(|e| anyhow!("Invalid address hex: {}", e))
+}
+
+// Helper function to convert u64 to big-endian bytes (removing leading zeros)
+fn u64_to_be_bytes_minimal(value: u64) -> Vec<u8> {
+    if value == 0 {
+        return vec![0];
+    }
+    let bytes = value.to_be_bytes();
+    let mut start = 0;
+    for (i, &byte) in bytes.iter().enumerate() {
+        if byte != 0 {
+            start = i;
+            break;
+        }
+    }
+    bytes[start..].to_vec()
+}
 
 /// Asset type identifier (e.g., "ETH", "USDC", etc.)
 pub type AssetType = String;
@@ -308,10 +332,27 @@ impl PassWalletState {
     }
 }
 
+/// Pending withdrawal transaction with signed data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingWithdrawal {
+    pub wallet_address: WalletAddress,
+    pub subaccount_id: String,
+    pub asset_id: String,
+    pub amount: u64,
+    pub destination: String,
+    pub nonce: u64,
+    pub signed_raw_transaction: String,
+    pub created_at: u64,
+}
+
 /// PASS Wallet Manager - manages multiple PASS wallets
 pub struct PassWalletManager {
     kms: Arc<Mutex<EnclaveKMS>>,
     wallets: Arc<Mutex<HashMap<WalletAddress, PassWalletState>>>,
+    /// Global nonce counter for transaction sequencing
+    global_nonce: Arc<Mutex<u64>>,
+    /// Outbox queue for pending withdrawal transactions
+    outbox_queue: Arc<Mutex<VecDeque<PendingWithdrawal>>>,
 }
 
 impl PassWalletManager {
@@ -320,6 +361,8 @@ impl PassWalletManager {
         PassWalletManager {
             kms,
             wallets: Arc::new(Mutex::new(HashMap::new())),
+            global_nonce: Arc::new(Mutex::new(0)),
+            outbox_queue: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 
@@ -579,6 +622,216 @@ impl PassWalletManager {
             "subaccount_id": subaccount_id,
             "provenance_records": filtered_records
         }))
+    }
+
+    /// Withdraw assets to external address - builds and signs transaction
+    pub fn withdraw_to_external(&self, 
+        wallet_address: &str, 
+        subaccount_id: &str, 
+        asset_id: &str, 
+        amount: u64, 
+        destination: &str,
+        gas_price: Option<u64>,
+        gas_limit: Option<u64>,
+        chain_id: u64
+    ) -> Result<String> {
+        // CRITICAL: Lock the entire withdrawal process to ensure atomicity and sequencing
+        let _global_lock = self.global_nonce.lock().unwrap();
+        
+        // Parse destination address
+        let to_address = parse_address(destination)?;
+        
+        // Get and validate wallet state
+        let mut wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        // Check sufficient balance
+        let current_balance = wallet_state.get_balance(subaccount_id, asset_id);
+        if current_balance < amount {
+            return Err(anyhow!("Insufficient balance: {} available, {} requested", current_balance, amount));
+        }
+        
+        // Get asset info
+        let asset = wallet_state.assets.get(asset_id)
+            .ok_or_else(|| anyhow!("Asset not found"))?;
+        
+        // Increment wallet nonce for this transaction
+        wallet_state.nonce += 1;
+        let wallet_nonce = wallet_state.nonce;
+        
+        // Get global nonce for transaction ordering
+        let mut global_nonce = self.global_nonce.lock().unwrap();
+        *global_nonce += 1;
+        let tx_nonce = *global_nonce;
+        drop(global_nonce);
+        
+        // Build transaction based on asset type
+        let raw_transaction = match asset.token_type {
+            TokenType::ETH => {
+                self.build_eth_transaction(
+                    to_address,
+                    amount,
+                    asset.decimals,
+                    wallet_nonce,
+                    gas_price.unwrap_or(20_000_000_000), // 20 gwei default
+                    gas_limit.unwrap_or(21_000), // standard ETH transfer
+                    chain_id,
+                    wallet_address,
+                )?
+            },
+            TokenType::ERC20 => {
+                let contract_address = parse_address(
+                    asset.contract_address
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("ERC20 contract address not found"))?
+                )?;
+                
+                self.build_erc20_transaction(
+                    contract_address,
+                    to_address.clone(),
+                    amount,
+                    wallet_nonce,
+                    gas_price.unwrap_or(20_000_000_000), // 20 gwei default
+                    gas_limit.unwrap_or(60_000), // standard ERC20 transfer
+                    chain_id,
+                    wallet_address,
+                )?
+            },
+            _ => {
+                return Err(anyhow!("Withdrawal not supported for asset type: {:?}", asset.token_type));
+            }
+        };
+        
+        // Update wallet balance
+        wallet_state.set_balance(subaccount_id, asset_id, current_balance - amount);
+        
+        // Add to provenance history
+        wallet_state.history.push(ProvenanceRecord {
+            operation: TransactionOperation::Withdraw {
+                asset_id: asset_id.to_string(),
+                amount,
+                subaccount_id: subaccount_id.to_string(),
+                destination: destination.to_string(),
+            },
+            timestamp: PassWalletState::get_timestamp(),
+            block_number: None, // Will be filled when transaction is mined
+        });
+        
+        // Save updated wallet state
+        self.update_wallet(wallet_address, wallet_state)?;
+        
+        // Create pending withdrawal record
+        let pending_withdrawal = PendingWithdrawal {
+            wallet_address: wallet_address.to_string(),
+            subaccount_id: subaccount_id.to_string(),
+            asset_id: asset_id.to_string(),
+            amount,
+            destination: destination.to_string(),
+            nonce: tx_nonce,
+            signed_raw_transaction: raw_transaction.clone(),
+            created_at: PassWalletState::get_timestamp(),
+        };
+        
+        // Add to outbox queue (FIFO)
+        {
+            let mut outbox = self.outbox_queue.lock().unwrap();
+            outbox.push_back(pending_withdrawal);
+        }
+        
+        Ok(raw_transaction)
+    }
+    
+    /// Build and sign ETH transaction
+    fn build_eth_transaction(
+        &self,
+        to: Vec<u8>,
+        amount: u64,
+        _decimals: u32,
+        nonce: u64,
+        gas_price: u64,
+        gas_limit: u64,
+        chain_id: u64,
+        wallet_address: &str,
+    ) -> Result<String> {
+        // Build transaction struct
+        let tx = crate::key_manager::LegacyTransaction {
+            nonce,
+            gas_price: u64_to_be_bytes_minimal(gas_price),
+            gas_limit: u64_to_be_bytes_minimal(gas_limit),
+            to: Some(to),
+            value: u64_to_be_bytes_minimal(amount),
+            data: Vec::new(),
+        };
+        
+        // Sign transaction using KMS
+        let signed_tx = {
+            let mut kms = self.kms.lock().unwrap();
+            kms.sign_transaction(wallet_address, &tx, chain_id)?
+        };
+        
+        Ok(signed_tx)
+    }
+    
+    /// Build and sign ERC20 transaction
+    fn build_erc20_transaction(
+        &self,
+        token_contract: Vec<u8>,
+        to: Vec<u8>,
+        amount: u64,
+        nonce: u64,
+        gas_price: u64,
+        gas_limit: u64,
+        chain_id: u64,
+        wallet_address: &str,
+    ) -> Result<String> {
+        // ERC20 transfer function signature: transfer(address,uint256)
+        let transfer_selector = [0xa9, 0x05, 0x9c, 0xbb]; // keccak256("transfer(address,uint256)")[0:4]
+        
+        // Encode function call data
+        let mut call_data = Vec::new();
+        call_data.extend_from_slice(&transfer_selector);
+        
+        // Encode address (32 bytes, left-padded)
+        let mut addr_bytes = [0u8; 32];
+        addr_bytes[12..32].copy_from_slice(&to);
+        call_data.extend_from_slice(&addr_bytes);
+        
+        // Encode amount (32 bytes, big-endian)
+        let mut amount_bytes = [0u8; 32];
+        let amount_be = amount.to_be_bytes();
+        amount_bytes[24..].copy_from_slice(&amount_be);
+        call_data.extend_from_slice(&amount_bytes);
+        
+        // Build transaction struct
+        let tx = crate::key_manager::LegacyTransaction {
+            nonce,
+            gas_price: u64_to_be_bytes_minimal(gas_price),
+            gas_limit: u64_to_be_bytes_minimal(gas_limit),
+            to: Some(token_contract),
+            value: vec![0], // Zero value for ERC20 transfers
+            data: call_data,
+        };
+        
+        // Sign transaction using KMS
+        let signed_tx = {
+            let mut kms = self.kms.lock().unwrap();
+            kms.sign_transaction(wallet_address, &tx, chain_id)?
+        };
+        
+        Ok(signed_tx)
+    }
+    
+    /// Get pending withdrawals from outbox queue
+    pub fn get_outbox_queue(&self) -> Result<Vec<PendingWithdrawal>> {
+        let outbox = self.outbox_queue.lock().unwrap();
+        Ok(outbox.iter().cloned().collect())
+    }
+    
+    /// Remove processed withdrawal from outbox queue
+    pub fn remove_from_outbox(&self, nonce: u64) -> Result<()> {
+        let mut outbox = self.outbox_queue.lock().unwrap();
+        outbox.retain(|w| w.nonce != nonce);
+        Ok(())
     }
 }
 

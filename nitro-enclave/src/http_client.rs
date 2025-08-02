@@ -153,6 +153,24 @@ struct GetProvenanceBySubaccountRequest {
     subaccount_id: String,
 }
 
+// Withdrawal request structures
+#[derive(Deserialize)]
+struct WithdrawToExternalRequest {
+    wallet_address: String,
+    subaccount_id: String,
+    asset_id: String,
+    amount: u64,
+    destination: String,
+    gas_price: Option<u64>,
+    gas_limit: Option<u64>,
+    chain_id: u64,
+}
+
+#[derive(Deserialize)]
+struct RemoveFromOutboxRequest {
+    nonce: u64,
+}
+
 // Command: Generate account
 async fn generate_handler(Json(_args): Json<Option<serde_json::Value>>) -> Result<JsonResponse<GenerateResponse>, (StatusCode, JsonResponse<ErrorResponse>)> {
     println!("Generating account");
@@ -817,6 +835,104 @@ async fn sign_gsm_handler(Json(request): Json<SignGSMRequest>) -> Result<JsonRes
     }
 }
 
+// Withdraw to external address handler
+async fn withdraw_to_external_handler(Json(request): Json<WithdrawToExternalRequest>) -> Result<JsonResponse<serde_json::Value>, (StatusCode, JsonResponse<ErrorResponse>)> {
+    let cid = std::env::var("ENCLAVE_CID").unwrap_or_else(|_| "19".to_string()).parse::<u32>()
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: "Invalid ENCLAVE_CID".to_string(),
+        })))?;
+    
+    let port = 7777u32;
+    
+    let command = serde_json::json!({
+        "WithdrawToExternal": {
+            "wallet_address": request.wallet_address,
+            "subaccount_id": request.subaccount_id,
+            "asset_id": request.asset_id,
+            "amount": request.amount,
+            "destination": request.destination,
+            "gas_price": request.gas_price,
+            "gas_limit": request.gas_limit,
+            "chain_id": request.chain_id
+        }
+    });
+    
+    match send_command_to_enclave(cid, port, &command.to_string()).await {
+        Ok(response) => {
+            if response.success {
+                Ok(JsonResponse(response.data.unwrap_or(serde_json::json!({}))))
+            } else {
+                Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+                    error: response.error.unwrap_or_else(|| "Unknown error".to_string()),
+                })))
+            }
+        }
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: format!("Enclave communication error: {}", e),
+        })))
+    }
+}
+
+// Get outbox queue handler
+async fn get_outbox_queue_handler() -> Result<JsonResponse<serde_json::Value>, (StatusCode, JsonResponse<ErrorResponse>)> {
+    let cid = std::env::var("ENCLAVE_CID").unwrap_or_else(|_| "19".to_string()).parse::<u32>()
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: "Invalid ENCLAVE_CID".to_string(),
+        })))?;
+    
+    let port = 7777u32;
+    
+    let command = serde_json::json!({
+        "GetOutboxQueue": {}
+    });
+    
+    match send_command_to_enclave(cid, port, &command.to_string()).await {
+        Ok(response) => {
+            if response.success {
+                Ok(JsonResponse(response.data.unwrap_or(serde_json::json!({}))))
+            } else {
+                Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+                    error: response.error.unwrap_or_else(|| "Unknown error".to_string()),
+                })))
+            }
+        }
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: format!("Enclave communication error: {}", e),
+        })))
+    }
+}
+
+// Remove from outbox handler
+async fn remove_from_outbox_handler(Json(request): Json<RemoveFromOutboxRequest>) -> Result<JsonResponse<serde_json::Value>, (StatusCode, JsonResponse<ErrorResponse>)> {
+    let cid = std::env::var("ENCLAVE_CID").unwrap_or_else(|_| "19".to_string()).parse::<u32>()
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: "Invalid ENCLAVE_CID".to_string(),
+        })))?;
+    
+    let port = 7777u32;
+    
+    let command = serde_json::json!({
+        "RemoveFromOutbox": {
+            "nonce": request.nonce
+        }
+    });
+    
+    match send_command_to_enclave(cid, port, &command.to_string()).await {
+        Ok(response) => {
+            if response.success {
+                Ok(JsonResponse(response.data.unwrap_or(serde_json::json!({}))))
+            } else {
+                Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+                    error: response.error.unwrap_or_else(|| "Unknown error".to_string()),
+                })))
+            }
+        }
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: format!("Enclave communication error: {}", e),
+        })))
+    }
+}
+
 // Send command to enclave and receive response
 async fn send_command_to_enclave(cid: u32, port: u32, command: &str) -> Result<Response, String> {
     let vsocket = vsock_connect(cid, port)?;
@@ -866,7 +982,9 @@ pub async fn run_http_server(port: u16) -> Result<(), Box<dyn std::error::Error>
         .route("/pass/wallets/claims", post(claim_inbox_handler))
         .route("/pass/wallets/transfers", post(internal_transfer_handler))
         .route("/pass/wallets/withdrawals", post(withdraw_handler))
-        .route("/pass/wallets/outbox", post(process_outbox_handler))
+        .route("/pass/wallets/withdrawals/external", post(withdraw_to_external_handler))
+        .route("/pass/wallets/outbox", get(get_outbox_queue_handler))
+        .route("/pass/wallets/outbox/remove", post(remove_from_outbox_handler))
         .route("/pass/wallets/balance", post(get_balance_handler))
         .route("/pass/wallets/balances", post(get_subaccount_balances_handler))
         .route("/pass/wallets/sign", post(sign_gsm_handler))
