@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import TransferModal from '../../components/TransferModal';
 import MessageModal from '../../components/MessageModal';
 import AssetTransferModal from '../../components/AssetTransferModal';
+import WithdrawModal from '../../components/WithdrawModal';
 import { MessageRequest } from '../../types';
 import DomainTransferModal from '../../components/DomainTransferModal';
 
@@ -126,6 +127,7 @@ const AccountDetailsPage: NextPage = () => {
   const [subaccountAssets, setSubaccountAssets] = useState<any>(null);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
   const [isAssetTransferModalOpen, setIsAssetTransferModalOpen] = useState(false);
+  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<{assetId: string, asset: any} | null>(null);
   const [provenanceData, setProvenanceData] = useState<any>(null);
   const [isLoadingProvenance, setIsLoadingProvenance] = useState(false);
@@ -1248,15 +1250,17 @@ const AccountDetailsPage: NextPage = () => {
                               <button
                                 style={{
                                   ...buttonStyle,
-                                  backgroundColor: '#6c757d',
+                                  backgroundColor: '#dc3545',
                                   padding: '6px 12px',
                                   fontSize: '0.8rem',
                                   border: 'none',
-                                  cursor: 'not-allowed',
-                                  color: 'white',
-                                  opacity: 0.6
+                                  cursor: 'pointer',
+                                  color: 'white'
                                 }}
-                                disabled={true}
+                                onClick={() => {
+                                  setSelectedAsset({ assetId, asset });
+                                  setIsWithdrawModalOpen(true);
+                                }}
                               >
                                 Withdraw
                               </button>
@@ -1884,6 +1888,20 @@ const AccountDetailsPage: NextPage = () => {
         connectedAddress={connectedAddress as string}
         onTransferComplete={() => {
           fetchSubaccountAssets();
+          setSelectedAsset(null);
+        }}
+      />
+
+      <WithdrawModal
+        isOpen={isWithdrawModalOpen}
+        onClose={() => setIsWithdrawModalOpen(false)}
+        assetId={selectedAsset?.assetId || ''}
+        asset={selectedAsset?.asset || {}}
+        walletAddress={accountAddress as string}
+        connectedAddress={connectedAddress as string}
+        onWithdrawComplete={() => {
+          fetchSubaccountAssets();
+          fetchProvenanceData();
           setSelectedAsset(null);
         }}
       />
