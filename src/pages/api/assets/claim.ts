@@ -75,7 +75,7 @@ export default async function handler(
         },
         body: JSON.stringify({
           wallet_address: walletAddress,
-          asset_id: `${transaction.asset.symbol.toLowerCase()}_mainnet`, // Use consistent asset ID format
+          asset_id: transaction.asset.symbol.toLowerCase(),
           token_type: tokenTypeMap[transaction.asset.tokenType] || transaction.asset.tokenType,
           contract_address: transaction.asset.contractAddress,
           token_id: transaction.asset.tokenId,
@@ -105,7 +105,7 @@ export default async function handler(
         },
         body: JSON.stringify({
           wallet_address: walletAddress,
-          asset_id: `${transaction.asset.symbol.toLowerCase()}_mainnet`, // Use consistent asset ID format
+          asset_id: transaction.asset.symbol.toLowerCase(),
           amount: Number(transaction.amount),
           deposit_id: transactionHash,
           transaction_hash: transactionHash,

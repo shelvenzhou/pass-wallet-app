@@ -192,7 +192,7 @@ async function monitorEthTransfers(
                 },
                 body: JSON.stringify({
                   wallet_address: walletAddress,
-                  asset_id: 'eth_mainnet',
+                  asset_id: 'eth',
                   amount: parseInt(tx.value),
                   deposit_id: tx.hash,
                   transaction_hash: tx.hash,

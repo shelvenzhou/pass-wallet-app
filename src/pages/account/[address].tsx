@@ -106,7 +106,7 @@ const AccountDetailsPage: NextPage = () => {
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
   const [isDomainTransferModalOpen, setIsDomainTransferModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'assets' | 'messages' | 'inbox'>('assets');
+  const [activeTab, setActiveTab] = useState<'assets' | 'messages' | 'inbox' | 'provenance'>('assets');
   const [accountDetails, setAccountDetails] = useState<{
     name: string;
     balance: string;
@@ -127,6 +127,8 @@ const AccountDetailsPage: NextPage = () => {
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
   const [isAssetTransferModalOpen, setIsAssetTransferModalOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<{assetId: string, asset: any} | null>(null);
+  const [provenanceData, setProvenanceData] = useState<any>(null);
+  const [isLoadingProvenance, setIsLoadingProvenance] = useState(false);
 
   const handleApproveProposal = async () => {
     console.log("Approve proposal");
@@ -563,12 +565,55 @@ const AccountDetailsPage: NextPage = () => {
     }
   };
 
+  // Fetch provenance data for the connected subaccount
+  const fetchProvenanceData = async () => {
+    if (!accountAddress || !connectedAddress) return;
+    
+    try {
+      setIsLoadingProvenance(true);
+      console.log('Fetching provenance data for:', accountAddress);
+      
+      const response = await fetch('/api/provenance/subaccount', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wallet_address: accountAddress,
+          connected_address: connectedAddress
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch provenance data: ${response.status} ${errorText}`);
+      }
+      
+      const provenanceResponse = await response.json();
+      console.log('Provenance data:', provenanceResponse);
+      setProvenanceData(provenanceResponse);
+    } catch (error) {
+      console.error('Error fetching provenance data:', error);
+      setProvenanceData(null);
+      toast.error(`Failed to fetch provenance data: ${error.message}`);
+    } finally {
+      setIsLoadingProvenance(false);
+    }
+  };
+
   // Fetch subaccount assets when component loads
   useEffect(() => {
     if (router.isReady && accountAddress && connectedAddress) {
       fetchSubaccountAssets();
     }
   }, [router.isReady, accountAddress, connectedAddress]);
+
+  // Fetch provenance data when provenance tab is accessed
+  useEffect(() => {
+    if (activeTab === 'provenance' && router.isReady && accountAddress && connectedAddress && !provenanceData) {
+      fetchProvenanceData();
+    }
+  }, [activeTab, router.isReady, accountAddress, connectedAddress, provenanceData]);
   
 
   const cardStyle = {
@@ -1100,6 +1145,12 @@ const AccountDetailsPage: NextPage = () => {
                   >
                     Inbox Transactions
                   </button>
+                  <button
+                    style={activeTab === 'provenance' ? activeTabStyle : tabStyle}
+                    onClick={() => setActiveTab('provenance')}
+                  >
+                    Asset Provenance Log
+                  </button>
                 </div>
 
                 {activeTab === 'assets' && (
@@ -1413,6 +1464,203 @@ const AccountDetailsPage: NextPage = () => {
                             </div>
                           </div>
                         ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'provenance' && (
+                  <div>
+                    <div style={{ marginBottom: '16px', textAlign: 'right' }}>
+                      <button
+                        style={{
+                          ...buttonStyle,
+                          backgroundColor: '#17a2b8',
+                          padding: '8px 16px',
+                          fontSize: '0.9rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginLeft: 'auto'
+                        }}
+                        onClick={fetchProvenanceData}
+                        disabled={isLoadingProvenance}
+                      >
+                        <FontAwesomeIcon 
+                          icon={faSync} 
+                          spin={isLoadingProvenance}
+                          style={{ fontSize: '0.8rem' }}
+                        />
+                        {isLoadingProvenance ? 'Loading...' : 'Refresh Provenance'}
+                      </button>
+                    </div>
+
+                    {isLoadingProvenance ? (
+                      <p style={{ color: '#666', textAlign: 'center', padding: '20px' }}>Loading provenance data...</p>
+                    ) : !provenanceData || !provenanceData.provenance_records ? (
+                      <p style={{ color: '#666' }}>No provenance records found for this subaccount</p>
+                    ) : provenanceData.provenance_records.length === 0 ? (
+                      <p style={{ color: '#666' }}>No asset transactions recorded yet</p>
+                    ) : (
+                      <div style={{ overflowY: 'auto', maxHeight: '600px' }}>
+                        {provenanceData.provenance_records.map((record: any, index: number) => {
+                          const operation = record.operation;
+                          const timestamp = new Date(record.timestamp * 1000).toLocaleString();
+                          
+                          // Helper function to get correct decimals for asset
+                          const getAssetDecimals = (assetId: string) => {
+                            // Default decimals mapping for common assets
+                            const defaultDecimals: { [key: string]: number } = {
+                              'eth': 18,
+                              'usdc': 6,
+                              'usdt': 6,
+                              'dai': 18,
+                              'wbtc': 8
+                            };
+                            
+                            // Try to get decimals from subaccountAssets if available
+                            if (subaccountAssets?.assets?.[assetId]?.decimals !== undefined) {
+                              return subaccountAssets.assets[assetId].decimals;
+                            }
+                            
+                            // Fall back to default mapping
+                            return defaultDecimals[assetId.toLowerCase()] || 18;
+                          };
+
+                          // Helper function to get actual subaccount address
+                          const getSubaccountAddress = (subaccountId: string) => {
+                            // Check if we have the mapping from the API response
+                            if (provenanceData.subaccount_mapping && provenanceData.subaccount_mapping[subaccountId]) {
+                              return provenanceData.subaccount_mapping[subaccountId];
+                            }
+                            
+                            // Fallback to known connected address
+                            if (subaccountId === provenanceData.subaccount_id && provenanceData.subaccount_address) {
+                              return provenanceData.subaccount_address;
+                            }
+                            
+                            // Last resort placeholder
+                            return `Unknown-${subaccountId}`;
+                          };
+
+                          // Helper function to format address for display
+                          const formatAddress = (address: string) => {
+                            if (address.startsWith('0x') && address.length === 42) {
+                              return `${address.slice(0, 6)}...${address.slice(-4)}`;
+                            }
+                            return address;
+                          };
+                          
+                          // Determine operation type and details
+                          let operationType = '';
+                          let operationDetails = '';
+                          let operationColor = '#6c757d';
+                          
+                          if (operation.Claim) {
+                            const decimals = getAssetDecimals(operation.Claim.asset_id);
+                            operationType = 'Claim';
+                            operationDetails = `${formatAmount(operation.Claim.amount.toString(), decimals, operation.Claim.asset_id)}`;
+                            operationColor = '#28a745';
+                          } else if (operation.Transfer) {
+                            const decimals = getAssetDecimals(operation.Transfer.asset_id);
+                            const isOutgoing = operation.Transfer.from_subaccount === provenanceData.subaccount_id;
+                            operationType = isOutgoing ? 'Transfer Out' : 'Transfer In';
+                            operationDetails = `${formatAmount(operation.Transfer.amount.toString(), decimals, operation.Transfer.asset_id)}`;
+                            operationColor = isOutgoing ? '#dc3545' : '#007bff';
+                          } else if (operation.Withdraw) {
+                            const decimals = getAssetDecimals(operation.Withdraw.asset_id);
+                            operationType = 'Withdraw';
+                            operationDetails = `${formatAmount(operation.Withdraw.amount.toString(), decimals, operation.Withdraw.asset_id)}`;
+                            operationColor = '#fd7e14';
+                          }
+
+                          return (
+                            <div
+                              key={index}
+                              style={{
+                                padding: '16px',
+                                borderBottom: '1px solid #eaeaea',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'flex-start'
+                              }}
+                            >
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                                  <span
+                                    style={{
+                                      backgroundColor: operationColor,
+                                      color: 'white',
+                                      padding: '4px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '0.8rem',
+                                      fontWeight: '500',
+                                      marginRight: '12px'
+                                    }}
+                                  >
+                                    {operationType}
+                                  </span>
+                                  <div style={{ fontWeight: '500', fontSize: '1rem' }}>
+                                    {operationDetails}
+                                  </div>
+                                </div>
+                                
+                                <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                  <strong>Time:</strong> {timestamp}
+                                </div>
+
+                                {/* Show transfer destination/source address */}
+                                {operation.Transfer && (
+                                  <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                    <strong>{operation.Transfer.from_subaccount === provenanceData.subaccount_id ? 'To:' : 'From:'}</strong>{' '}
+                                    <span style={{ fontFamily: 'monospace' }}>
+                                      {formatAddress(getSubaccountAddress(
+                                        operation.Transfer.from_subaccount === provenanceData.subaccount_id 
+                                          ? operation.Transfer.to_subaccount 
+                                          : operation.Transfer.from_subaccount
+                                      ))}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* Show withdrawal destination */}
+                                {operation.Withdraw && (
+                                  <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                    <strong>To:</strong>{' '}
+                                    <span style={{ fontFamily: 'monospace' }}>
+                                      {formatAddress(operation.Withdraw.destination)}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* Show claim source */}
+                                {operation.Claim && (
+                                  <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                    <strong>From Deposit:</strong>{' '}
+                                    <span style={{ fontFamily: 'monospace' }}>
+                                      {operation.Claim.deposit_id.slice(0, 10)}...
+                                    </span>
+                                  </div>
+                                )}
+                                
+                                {record.block_number && (
+                                  <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                    <strong>Block:</strong> {record.block_number}
+                                  </div>
+                                )}
+
+                                {/* Show asset ID if available */}
+                                {(operation.Claim?.asset_id || operation.Transfer?.asset_id || operation.Withdraw?.asset_id) && (
+                                  <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                    <strong>Asset:</strong> <span style={{ fontFamily: 'monospace' }}>
+                                      {operation.Claim?.asset_id || operation.Transfer?.asset_id || operation.Withdraw?.asset_id}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

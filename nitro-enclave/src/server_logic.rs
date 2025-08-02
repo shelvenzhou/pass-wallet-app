@@ -113,6 +113,19 @@ pub enum Command {
     GetAssets { 
         wallet_address: String,
     },
+    
+    // Provenance operations
+    GetProvenanceLog { 
+        wallet_address: String,
+    },
+    GetProvenanceByAsset { 
+        wallet_address: String,
+        asset_id: String,
+    },
+    GetProvenanceBySubaccount { 
+        wallet_address: String,
+        subaccount_id: String,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -589,6 +602,51 @@ pub fn parse_command(command: &str) -> Result<Response, String> {
                     success: false,
                     data: None,
                     error: Some(format!("Failed to get assets: {}", e)),
+                }),
+            }
+        }
+
+        Command::GetProvenanceLog { wallet_address } => {
+            match PASS_WALLET_MANAGER.get_provenance_log(&wallet_address) {
+                Ok(provenance_log) => Ok(Response {
+                    success: true,
+                    data: Some(provenance_log),
+                    error: None,
+                }),
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to get provenance log: {}", e)),
+                }),
+            }
+        }
+
+        Command::GetProvenanceByAsset { wallet_address, asset_id } => {
+            match PASS_WALLET_MANAGER.get_provenance_by_asset(&wallet_address, &asset_id) {
+                Ok(provenance_log) => Ok(Response {
+                    success: true,
+                    data: Some(provenance_log),
+                    error: None,
+                }),
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to get provenance log by asset: {}", e)),
+                }),
+            }
+        }
+
+        Command::GetProvenanceBySubaccount { wallet_address, subaccount_id } => {
+            match PASS_WALLET_MANAGER.get_provenance_by_subaccount(&wallet_address, &subaccount_id) {
+                Ok(provenance_log) => Ok(Response {
+                    success: true,
+                    data: Some(provenance_log),
+                    error: None,
+                }),
+                Err(e) => Ok(Response {
+                    success: false,
+                    data: None,
+                    error: Some(format!("Failed to get provenance log by subaccount: {}", e)),
                 }),
             }
         }

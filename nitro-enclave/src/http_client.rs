@@ -136,6 +136,23 @@ struct GetAssetsRequest {
     wallet_address: String,
 }
 
+#[derive(Deserialize)]
+struct GetProvenanceLogRequest {
+    wallet_address: String,
+}
+
+#[derive(Deserialize)]
+struct GetProvenanceByAssetRequest {
+    wallet_address: String,
+    asset_id: String,
+}
+
+#[derive(Deserialize)]
+struct GetProvenanceBySubaccountRequest {
+    wallet_address: String,
+    subaccount_id: String,
+}
+
 // Command: Generate account
 async fn generate_handler(Json(_args): Json<Option<serde_json::Value>>) -> Result<JsonResponse<GenerateResponse>, (StatusCode, JsonResponse<ErrorResponse>)> {
     println!("Generating account");
@@ -344,6 +361,101 @@ async fn get_assets_handler(Json(request): Json<GetAssetsRequest>) -> Result<Jso
     let command = serde_json::json!({
         "GetAssets": {
             "wallet_address": request.wallet_address
+        }
+    });
+    
+    match send_command_to_enclave(cid, port, &command.to_string()).await {
+        Ok(response) => {
+            if response.success {
+                Ok(JsonResponse(response.data.unwrap_or(serde_json::json!({}))))
+            } else {
+                Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+                    error: response.error.unwrap_or_else(|| "Unknown error".to_string()),
+                })))
+            }
+        }
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: format!("Enclave communication error: {}", e),
+        })))
+    }
+}
+
+// Get full provenance log from wallet
+async fn get_provenance_log_handler(Json(request): Json<GetProvenanceLogRequest>) -> Result<JsonResponse<serde_json::Value>, (StatusCode, JsonResponse<ErrorResponse>)> {
+    let cid = std::env::var("ENCLAVE_CID").unwrap_or_else(|_| "19".to_string()).parse::<u32>()
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: "Invalid ENCLAVE_CID".to_string(),
+        })))?;
+    
+    let port = 7777u32;
+    
+    let command = serde_json::json!({
+        "GetProvenanceLog": {
+            "wallet_address": request.wallet_address
+        }
+    });
+    
+    match send_command_to_enclave(cid, port, &command.to_string()).await {
+        Ok(response) => {
+            if response.success {
+                Ok(JsonResponse(response.data.unwrap_or(serde_json::json!({}))))
+            } else {
+                Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+                    error: response.error.unwrap_or_else(|| "Unknown error".to_string()),
+                })))
+            }
+        }
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: format!("Enclave communication error: {}", e),
+        })))
+    }
+}
+
+// Get provenance log filtered by asset
+async fn get_provenance_by_asset_handler(Json(request): Json<GetProvenanceByAssetRequest>) -> Result<JsonResponse<serde_json::Value>, (StatusCode, JsonResponse<ErrorResponse>)> {
+    let cid = std::env::var("ENCLAVE_CID").unwrap_or_else(|_| "19".to_string()).parse::<u32>()
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: "Invalid ENCLAVE_CID".to_string(),
+        })))?;
+    
+    let port = 7777u32;
+    
+    let command = serde_json::json!({
+        "GetProvenanceByAsset": {
+            "wallet_address": request.wallet_address,
+            "asset_id": request.asset_id
+        }
+    });
+    
+    match send_command_to_enclave(cid, port, &command.to_string()).await {
+        Ok(response) => {
+            if response.success {
+                Ok(JsonResponse(response.data.unwrap_or(serde_json::json!({}))))
+            } else {
+                Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+                    error: response.error.unwrap_or_else(|| "Unknown error".to_string()),
+                })))
+            }
+        }
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: format!("Enclave communication error: {}", e),
+        })))
+    }
+}
+
+// Get provenance log filtered by subaccount
+async fn get_provenance_by_subaccount_handler(Json(request): Json<GetProvenanceBySubaccountRequest>) -> Result<JsonResponse<serde_json::Value>, (StatusCode, JsonResponse<ErrorResponse>)> {
+    let cid = std::env::var("ENCLAVE_CID").unwrap_or_else(|_| "19".to_string()).parse::<u32>()
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, JsonResponse(ErrorResponse {
+            error: "Invalid ENCLAVE_CID".to_string(),
+        })))?;
+    
+    let port = 7777u32;
+    
+    let command = serde_json::json!({
+        "GetProvenanceBySubaccount": {
+            "wallet_address": request.wallet_address,
+            "subaccount_id": request.subaccount_id
         }
     });
     
@@ -758,6 +870,11 @@ pub async fn run_http_server(port: u16) -> Result<(), Box<dyn std::error::Error>
         .route("/pass/wallets/balance", post(get_balance_handler))
         .route("/pass/wallets/balances", post(get_subaccount_balances_handler))
         .route("/pass/wallets/sign", post(sign_gsm_handler))
+        
+        // Provenance endpoints
+        .route("/pass/wallets/provenance", post(get_provenance_log_handler))
+        .route("/pass/wallets/provenance/asset", post(get_provenance_by_asset_handler))
+        .route("/pass/wallets/provenance/subaccount", post(get_provenance_by_subaccount_handler))
         
         .layer(cors);
 

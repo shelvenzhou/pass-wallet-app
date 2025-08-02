@@ -523,6 +523,63 @@ impl PassWalletManager {
             "assets": assets_with_balances
         }))
     }
+
+    /// Get full provenance log for a wallet
+    pub fn get_provenance_log(&self, wallet_address: &str) -> Result<serde_json::Value> {
+        let wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        Ok(serde_json::json!({
+            "wallet_address": wallet_address,
+            "provenance_records": wallet_state.history
+        }))
+    }
+
+    /// Get provenance log filtered by asset
+    pub fn get_provenance_by_asset(&self, wallet_address: &str, asset_id: &str) -> Result<serde_json::Value> {
+        let wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        let filtered_records: Vec<&ProvenanceRecord> = wallet_state.history.iter()
+            .filter(|record| {
+                match &record.operation {
+                    TransactionOperation::Claim { asset_id: a, .. } => a == asset_id,
+                    TransactionOperation::Transfer { asset_id: a, .. } => a == asset_id,
+                    TransactionOperation::Withdraw { asset_id: a, .. } => a == asset_id,
+                }
+            })
+            .collect();
+        
+        Ok(serde_json::json!({
+            "wallet_address": wallet_address,
+            "asset_id": asset_id,
+            "provenance_records": filtered_records
+        }))
+    }
+
+    /// Get provenance log filtered by subaccount
+    pub fn get_provenance_by_subaccount(&self, wallet_address: &str, subaccount_id: &str) -> Result<serde_json::Value> {
+        let wallet_state = self.get_wallet(wallet_address)
+            .ok_or_else(|| anyhow!("Wallet not found"))?;
+        
+        let filtered_records: Vec<&ProvenanceRecord> = wallet_state.history.iter()
+            .filter(|record| {
+                match &record.operation {
+                    TransactionOperation::Claim { subaccount_id: s, .. } => s == subaccount_id,
+                    TransactionOperation::Transfer { from_subaccount, to_subaccount, .. } => {
+                        from_subaccount == subaccount_id || to_subaccount == subaccount_id
+                    },
+                    TransactionOperation::Withdraw { subaccount_id: s, .. } => s == subaccount_id,
+                }
+            })
+            .collect();
+        
+        Ok(serde_json::json!({
+            "wallet_address": wallet_address,
+            "subaccount_id": subaccount_id,
+            "provenance_records": filtered_records
+        }))
+    }
 }
 
 #[cfg(test)]
