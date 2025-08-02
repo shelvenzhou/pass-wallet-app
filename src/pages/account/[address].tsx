@@ -1546,7 +1546,7 @@ const AccountDetailsPage: NextPage = () => {
                           // Helper function to format address for display
                           const formatAddress = (address: string) => {
                             if (address.startsWith('0x') && address.length === 42) {
-                              return `${address.slice(0, 6)}...${address.slice(-4)}`;
+                              return `${address}`;
                             }
                             return address;
                           };
@@ -1564,7 +1564,7 @@ const AccountDetailsPage: NextPage = () => {
                           } else if (operation.Transfer) {
                             const decimals = getAssetDecimals(operation.Transfer.asset_id);
                             const isOutgoing = operation.Transfer.from_subaccount === provenanceData.subaccount_id;
-                            operationType = isOutgoing ? 'Transfer Out' : 'Transfer In';
+                            operationType = isOutgoing ? 'PASS Transfer Out' : 'PASS Transfer In';
                             operationDetails = `${formatAmount(operation.Transfer.amount.toString(), decimals, operation.Transfer.asset_id)}`;
                             operationColor = isOutgoing ? '#dc3545' : '#007bff';
                           } else if (operation.Withdraw) {
@@ -1601,7 +1601,7 @@ const AccountDetailsPage: NextPage = () => {
                                     {operationType}
                                   </span>
                                   <div style={{ fontWeight: '500', fontSize: '1rem' }}>
-                                    {operationDetails}
+                                    {operationDetails.toUpperCase()}
                                   </div>
                                 </div>
                                 
@@ -1638,7 +1638,7 @@ const AccountDetailsPage: NextPage = () => {
                                   <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
                                     <strong>From Deposit:</strong>{' '}
                                     <span style={{ fontFamily: 'monospace' }}>
-                                      {operation.Claim.deposit_id.slice(0, 10)}...
+                                      {operation.Claim.deposit_id}
                                     </span>
                                   </div>
                                 )}
@@ -1653,7 +1653,7 @@ const AccountDetailsPage: NextPage = () => {
                                 {(operation.Claim?.asset_id || operation.Transfer?.asset_id || operation.Withdraw?.asset_id) && (
                                   <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
                                     <strong>Asset:</strong> <span style={{ fontFamily: 'monospace' }}>
-                                      {operation.Claim?.asset_id || operation.Transfer?.asset_id || operation.Withdraw?.asset_id}
+                                      {(operation.Claim?.asset_id || operation.Transfer?.asset_id || operation.Withdraw?.asset_id).toUpperCase()}
                                     </span>
                                   </div>
                                 )}
