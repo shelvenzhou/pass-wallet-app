@@ -149,9 +149,9 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
               <strong>To:</strong> {txDetails.destination.slice(0, 10)}...
             </div>
             <div style={{ marginBottom: '8px' }}>
-              <strong>Signed Transaction:</strong>
+              <strong>View Provenance Log for Signed Transaction</strong>
             </div>
-            <div style={{ 
+            {/* <div style={{ 
               fontFamily: 'monospace', 
               fontSize: '10px', 
               backgroundColor: '#f5f5f5', 
@@ -162,7 +162,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
               overflow: 'auto'
             }}>
               {signedTx}
-            </div>
+            </div> */}
           </div>,
           { 
             duration: 10000,

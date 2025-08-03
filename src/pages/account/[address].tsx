@@ -1630,6 +1630,19 @@ const AccountDetailsPage: NextPage = () => {
                                       </div>
                                     )}
                                     
+                                    {/* Show gas price and gas limit */}
+                                    {operation.Withdraw.gas_price && operation.Withdraw.gas_price > 0 && (
+                                      <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                        <strong>Gas Price:</strong> {operation.Withdraw.gas_price} wei ({(operation.Withdraw.gas_price / 1000000000).toFixed(2)} Gwei)
+                                      </div>
+                                    )}
+                                    
+                                    {operation.Withdraw.gas_limit && operation.Withdraw.gas_limit > 0 && (
+                                      <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                        <strong>Gas Limit:</strong> {operation.Withdraw.gas_limit.toLocaleString()} gas units
+                                      </div>
+                                    )}
+                                    
                                     {/* Show signed raw transaction */}
                                     {operation.Withdraw.signed_raw_transaction && 
                                      operation.Withdraw.signed_raw_transaction !== 'pending' && (
@@ -1650,7 +1663,7 @@ const AccountDetailsPage: NextPage = () => {
                                           {operation.Withdraw.signed_raw_transaction}
                                         </div>
                                         <div style={{ fontSize: '0.8rem', color: '#6c757d', marginTop: '4px' }}>
-                                          💡 Copy this transaction to submit to any Ethereum RPC endpoint
+                                          Copy this transaction to submit to any Ethereum RPC endpoint
                                         </div>
                                       </div>
                                     )}

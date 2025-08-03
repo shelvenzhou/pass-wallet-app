@@ -105,7 +105,7 @@ pub struct OutboxEntry {
 pub enum TransactionOperation {
     Claim { asset_id: String, amount: u64, deposit_id: DepositId, subaccount_id: String },
     Transfer { asset_id: String, amount: u64, from_subaccount: String, to_subaccount: String },
-    Withdraw { asset_id: String, amount: u64, subaccount_id: String, destination: ExternalDestination, signed_raw_transaction: String, nonce: u64 },
+    Withdraw { asset_id: String, amount: u64, subaccount_id: String, destination: ExternalDestination, signed_raw_transaction: String, nonce: u64, gas_price: u64, gas_limit: u64 },
 }
 
 /// Provenance history entry
@@ -272,6 +272,8 @@ impl PassWalletState {
                 destination: external_destination.to_string(),
                 signed_raw_transaction: "pending".to_string(), // Will be updated when transaction is signed
                 nonce: 0, // Will be updated when transaction is signed
+                gas_price: 0, // Will be updated when transaction is signed
+                gas_limit: 0, // Will be updated when transaction is signed
             },
             timestamp: Self::get_timestamp(),
             block_number: None,
@@ -721,6 +723,8 @@ impl PassWalletManager {
                 destination: destination.to_string(),
                 signed_raw_transaction: raw_transaction.clone(),
                 nonce: tx_nonce,
+                gas_price: actual_gas_price,
+                gas_limit: actual_gas_limit,
             },
             timestamp: PassWalletState::get_timestamp(),
             block_number: None, // Will be filled when transaction is mined
