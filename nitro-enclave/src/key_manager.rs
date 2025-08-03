@@ -216,11 +216,23 @@ impl EnclaveKMS {
         let tx_hash = self.compute_transaction_hash(tx, chain_id)?;
         let (signature, recovery_id) = signing_key.sign_prehash_recoverable(&tx_hash)?;
         
+        // Helper function to convert minimal big-endian bytes back to u64
+        let bytes_to_u64 = |bytes: &[u8]| -> u64 {
+            if bytes.is_empty() {
+                return 0;
+            }
+            let mut result = 0u64;
+            for &byte in bytes {
+                result = (result << 8) | (byte as u64);
+            }
+            result
+        };
+
         // Encode the signed transaction using RLP
         let mut rlp_stream = RlpStream::new_list(9);
         rlp_stream.append(&tx.nonce);
-        rlp_stream.append(&tx.gas_price);
-        rlp_stream.append(&tx.gas_limit);
+        rlp_stream.append(&bytes_to_u64(&tx.gas_price));
+        rlp_stream.append(&bytes_to_u64(&tx.gas_limit));
         
         // Handle the 'to' field properly
         if let Some(to_addr) = &tx.to {
@@ -229,7 +241,7 @@ impl EnclaveKMS {
             rlp_stream.append(&""); // Empty for contract creation
         }
         
-        rlp_stream.append(&tx.value);
+        rlp_stream.append(&bytes_to_u64(&tx.value));
         rlp_stream.append(&tx.data);
         
         // Add signature components with EIP-155
@@ -248,10 +260,22 @@ impl EnclaveKMS {
 
     /// Compute transaction hash for signing (EIP-155)
     fn compute_transaction_hash(&self, tx: &LegacyTransaction, chain_id: u64) -> Result<[u8; 32]> {
+        // Helper function to convert minimal big-endian bytes back to u64
+        let bytes_to_u64 = |bytes: &[u8]| -> u64 {
+            if bytes.is_empty() {
+                return 0;
+            }
+            let mut result = 0u64;
+            for &byte in bytes {
+                result = (result << 8) | (byte as u64);
+            }
+            result
+        };
+
         let mut rlp_stream = RlpStream::new_list(9);
         rlp_stream.append(&tx.nonce);
-        rlp_stream.append(&tx.gas_price);
-        rlp_stream.append(&tx.gas_limit);
+        rlp_stream.append(&bytes_to_u64(&tx.gas_price));
+        rlp_stream.append(&bytes_to_u64(&tx.gas_limit));
         
         if let Some(to_addr) = &tx.to {
             rlp_stream.append(to_addr);
@@ -259,7 +283,7 @@ impl EnclaveKMS {
             rlp_stream.append(&"");
         }
         
-        rlp_stream.append(&tx.value);
+        rlp_stream.append(&bytes_to_u64(&tx.value));
         rlp_stream.append(&tx.data);
         rlp_stream.append(&chain_id);
         rlp_stream.append(&0u8); // Empty r for EIP-155
