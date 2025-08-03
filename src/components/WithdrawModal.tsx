@@ -124,19 +124,57 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
       const data = await response.json();
       
       if (data.success) {
-        toast.success(`Withdrawal transaction created! Nonce: ${data.data.nonce || 'N/A'}`);
-        
-        // Show signed transaction details
-        console.log('Signed Raw Transaction:', data.data.signed_raw_transaction);
-        console.log('Withdrawal Details:', {
-          wallet: data.data.wallet_address,
-          subaccount: data.data.subaccount_id,
-          asset: data.data.asset_id,
+        const signedTx = data.data.signed_raw_transaction;
+        const txDetails = {
+          signedTransaction: signedTx,
+          nonce: data.data.nonce,
+          gasPrice: data.data.gas_price,
+          gasLimit: data.data.gas_limit,
           amount: data.data.amount,
           destination: data.data.destination,
-          nonce: data.data.nonce,
-          chain_id: data.data.chain_id
-        });
+          chainId: data.data.chain_id
+        };
+
+        // Show success message with signed transaction
+        toast.success(
+          <div style={{ whiteSpace: 'pre-wrap', maxWidth: '400px', fontSize: '12px' }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
+              Withdrawal Signed Successfully!
+            </div>
+            <div style={{ marginBottom: '8px' }}>
+              <strong>Nonce:</strong> {txDetails.nonce}<br/>
+              <strong>Gas Price:</strong> {txDetails.gasPrice} wei<br/>
+              <strong>Gas Limit:</strong> {txDetails.gasLimit}<br/>
+              <strong>Amount:</strong> {formatAmount(txDetails.amount, asset.decimals, asset.symbol)}<br/>
+              <strong>To:</strong> {txDetails.destination.slice(0, 10)}...
+            </div>
+            <div style={{ marginBottom: '8px' }}>
+              <strong>Signed Transaction:</strong>
+            </div>
+            <div style={{ 
+              fontFamily: 'monospace', 
+              fontSize: '10px', 
+              backgroundColor: '#f5f5f5', 
+              padding: '4px', 
+              borderRadius: '4px',
+              wordBreak: 'break-all',
+              maxHeight: '100px',
+              overflow: 'auto'
+            }}>
+              {signedTx}
+            </div>
+          </div>,
+          { 
+            duration: 10000,
+            style: { maxWidth: '500px' }
+          }
+        );
+        
+        // Also log to console for easy copying
+        console.log('=== WITHDRAWAL SIGNED TRANSACTION ===');
+        console.log('Signed Raw Transaction:', signedTx);
+        console.log('Transaction Details:', txDetails);
+        console.log('You can submit this transaction to any Ethereum RPC endpoint');
 
         // Reset form
         setDestinationAddress('');

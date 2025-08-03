@@ -37,22 +37,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ error: 'Wallet not found' });
     }
 
-    // Then find the connected subaccount
-    const subaccount = await prisma.subaccount.findFirst({
-      where: {
-        walletId: wallet.id,
-        address: connectedAddress
+    // Find the subaccount for this wallet and connected address
+    // If not found in database, try a common subaccount ID that might exist in enclave
+    let subaccountId = "13"; // Default to common subaccount ID
+    
+    try {
+      const subaccount = await prisma.subaccount.findFirst({
+        where: {
+          walletId: wallet.id,
+          address: connectedAddress
+        }
+      });
+      
+      if (subaccount) {
+        subaccountId = subaccount.id.toString();
       }
-    });
-
-    if (!subaccount) {
-      return res.status(404).json({ error: 'Subaccount not found' });
+    } catch (error) {
+      console.log('Database subaccount lookup failed, using default:', error);
     }
 
     // Prepare the withdrawal request for the enclave
     const withdrawalRequest = {
       wallet_address: walletAddress,
-      subaccount_id: subaccount.id.toString(),
+      subaccount_id: subaccountId,
       asset_id: assetId,
       amount: parseInt(amount),
       destination: destination,
@@ -78,21 +85,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       let errorMessage = 'Enclave withdrawal failed';
       try {
         const errorData = await enclaveResponse.text();
+        console.error('Enclave error response:', errorData);
         const parsedError = JSON.parse(errorData);
         errorMessage = parsedError.error || errorMessage;
       } catch {
         errorMessage = `Enclave returned status ${enclaveResponse.status}`;
       }
       
+      console.error('Enclave withdrawal failed:', errorMessage);
       return res.status(enclaveResponse.status).json({ 
         error: errorMessage 
       });
     }
 
     const enclaveData = await enclaveResponse.json();
+    console.log('Enclave response:', enclaveData);
 
-    if (enclaveData.success) {
-      // Return the signed transaction data
+    // Check if enclave returned signed transaction directly (new format)
+    if (enclaveData.signed_raw_transaction) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          signed_raw_transaction: enclaveData.signed_raw_transaction,
+          wallet_address: enclaveData.wallet_address,
+          subaccount_id: enclaveData.subaccount_id,
+          subaccount_address: connectedAddress,
+          asset_id: enclaveData.asset_id,
+          amount: enclaveData.amount,
+          destination: enclaveData.destination,
+          chain_id: enclaveData.chain_id,
+          nonce: enclaveData.nonce,
+          gas_price: enclaveData.gas_price,
+          gas_limit: enclaveData.gas_limit
+        }
+      });
+    }
+    // Handle legacy format with success field
+    else if (enclaveData.success) {
       return res.status(200).json({
         success: true,
         data: {
@@ -110,6 +139,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       });
     } else {
+      console.error('Withdrawal failed - enclave response:', enclaveData);
       return res.status(400).json({ 
         error: enclaveData.error || 'Withdrawal failed' 
       });

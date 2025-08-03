@@ -1615,12 +1615,46 @@ const AccountDetailsPage: NextPage = () => {
 
                                 {/* Show withdrawal destination */}
                                 {operation.Withdraw && (
-                                  <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
-                                    <strong>To:</strong>{' '}
-                                    <span style={{ fontFamily: 'monospace' }}>
-                                      {formatAddress(operation.Withdraw.destination)}
-                                    </span>
-                                  </div>
+                                  <>
+                                    <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                      <strong>To:</strong>{' '}
+                                      <span style={{ fontFamily: 'monospace' }}>
+                                        {formatAddress(operation.Withdraw.destination)}
+                                      </span>
+                                    </div>
+                                    
+                                    {/* Show withdrawal nonce */}
+                                    {operation.Withdraw.nonce && operation.Withdraw.nonce > 0 && (
+                                      <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                        <strong>Nonce:</strong> {operation.Withdraw.nonce}
+                                      </div>
+                                    )}
+                                    
+                                    {/* Show signed raw transaction */}
+                                    {operation.Withdraw.signed_raw_transaction && 
+                                     operation.Withdraw.signed_raw_transaction !== 'pending' && (
+                                      <div style={{ color: '#666', fontSize: '0.9rem', marginBottom: '4px' }}>
+                                        <strong>Signed Transaction:</strong>
+                                        <div style={{ 
+                                          fontFamily: 'monospace', 
+                                          fontSize: '0.8rem', 
+                                          backgroundColor: '#f8f9fa', 
+                                          padding: '8px', 
+                                          borderRadius: '4px',
+                                          marginTop: '4px',
+                                          wordBreak: 'break-all',
+                                          border: '1px solid #e9ecef',
+                                          maxHeight: '80px',
+                                          overflow: 'auto'
+                                        }}>
+                                          {operation.Withdraw.signed_raw_transaction}
+                                        </div>
+                                        <div style={{ fontSize: '0.8rem', color: '#6c757d', marginTop: '4px' }}>
+                                          💡 Copy this transaction to submit to any Ethereum RPC endpoint
+                                        </div>
+                                      </div>
+                                    )}
+                                  </>
                                 )}
 
                                 {/* Show claim source */}
