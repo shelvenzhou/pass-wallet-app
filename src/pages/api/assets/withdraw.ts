@@ -57,6 +57,58 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Prepare the withdrawal request for the enclave
+    // Fetch on-chain nonce and current gas price
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://eth-sepolia.g.alchemy.com/v2/LkVcda5a_AEu1VGxzs_WNcMG53-v0reS';
+    
+    let onChainNonce: number | null = null;
+    let currentGasPrice: number | null = null;
+    
+    try {
+      // Get on-chain nonce
+      const nonceResponse = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_getTransactionCount',
+          params: [walletAddress, 'pending'],
+          id: 1
+        })
+      });
+      
+      if (nonceResponse.ok) {
+        const nonceData = await nonceResponse.json();
+        if (nonceData.result) {
+          onChainNonce = parseInt(nonceData.result, 16);
+        }
+      }
+      
+      // Get current gas price if not provided
+      if (!gas_price) {
+        const gasPriceResponse = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'eth_gasPrice',
+            params: [],
+            id: 2
+          })
+        });
+        
+        if (gasPriceResponse.ok) {
+          const gasPriceData = await gasPriceResponse.json();
+          if (gasPriceData.result) {
+            const networkGasPrice = parseInt(gasPriceData.result, 16);
+            // Add 20% buffer for faster confirmation
+            currentGasPrice = Math.max(Math.floor(networkGasPrice * 1.2), 1_000_000_000); // Minimum 1 gwei
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to fetch on-chain data, using fallbacks:', error);
+    }
+
     const withdrawalRequest = {
       wallet_address: walletAddress,
       subaccount_id: subaccountId,
@@ -65,8 +117,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       destination: destination,
       chain_id: chain_id,
       // Always include gas parameters with defaults if not provided
-      gas_price: gas_price ? parseInt(gas_price) : null,
-      gas_limit: gas_limit ? parseInt(gas_limit) : null
+      gas_price: gas_price ? parseInt(gas_price) : (currentGasPrice || null),
+      gas_limit: gas_limit ? parseInt(gas_limit) : null,
+      override_nonce: onChainNonce
     };
 
     // Get enclave URL from environment

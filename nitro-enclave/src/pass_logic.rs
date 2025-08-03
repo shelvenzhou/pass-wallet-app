@@ -637,7 +637,8 @@ impl PassWalletManager {
         destination: &str,
         gas_price: Option<u64>,
         gas_limit: Option<u64>,
-        chain_id: u64
+        chain_id: u64,
+        override_nonce: Option<u64>
     ) -> Result<(String, u64, u64, u64)> {
         // Parse destination address first (no locks needed)
         let to_address = parse_address(destination)?;
@@ -649,19 +650,62 @@ impl PassWalletManager {
         let mut wallet_state = self.get_wallet(wallet_address)
             .ok_or_else(|| anyhow!("Wallet not found"))?;
         
-        // Check sufficient balance
+        // Get asset info
+        let asset = wallet_state.assets.get(asset_id)
+            .ok_or_else(|| anyhow!("Asset not found"))?;
+
+        // Check sufficient balance for the asset being withdrawn
         let current_balance = wallet_state.get_balance(subaccount_id, asset_id);
         if current_balance < amount {
             return Err(anyhow!("Insufficient balance: {} available, {} requested", current_balance, amount));
         }
+
+        // Check sufficient ETH balance for gas fees
+        let eth_asset_id = "ETH"; // Assuming ETH asset ID is "ETH"
+        let current_eth_balance = wallet_state.get_balance(subaccount_id, eth_asset_id);
         
-        // Get asset info
-        let asset = wallet_state.assets.get(asset_id)
-            .ok_or_else(|| anyhow!("Asset not found"))?;
+        // Calculate estimated gas cost to validate ETH balance
+        let estimated_gas_price = gas_price.unwrap_or(5_000_000_000); // 5 gwei default for Sepolia
+        let estimated_gas_limit = match asset.token_type {
+            TokenType::ETH => gas_limit.unwrap_or(21_000),
+            TokenType::ERC20 => gas_limit.unwrap_or(60_000),
+            _ => {
+                return Err(anyhow!("Withdrawal not supported for asset type: {:?}", asset.token_type));
+            }
+        };
         
-        // Increment wallet nonce for this transaction
-        wallet_state.nonce += 1;
-        let wallet_nonce = wallet_state.nonce;
+        let total_gas_cost = estimated_gas_price * estimated_gas_limit;
+        
+        // For ETH withdrawals, check that balance covers both amount + gas
+        // For other assets, check that ETH balance covers gas
+        if asset_id == eth_asset_id {
+            // Withdrawing ETH: need amount + gas fees
+            let total_eth_needed = amount + total_gas_cost;
+            if current_eth_balance < total_eth_needed {
+                return Err(anyhow!(
+                    "Insufficient ETH for withdrawal + gas fees: {} ETH available, {} needed ({} withdrawal + {} gas)", 
+                    current_eth_balance, total_eth_needed, amount, total_gas_cost
+                ));
+            }
+        } else {
+            // Withdrawing other asset: need ETH for gas fees
+            if current_eth_balance < total_gas_cost {
+                return Err(anyhow!(
+                    "Insufficient ETH for gas fees: {} ETH available, {} needed for gas", 
+                    current_eth_balance, total_gas_cost
+                ));
+            }
+        }
+        
+        // Use provided nonce or fallback to internal counter
+        let wallet_nonce = match override_nonce {
+            Some(nonce) => nonce,
+            None => {
+                // Fallback to internal nonce management (for backward compatibility)
+                wallet_state.nonce += 1;
+                wallet_state.nonce
+            }
+        };
         
         // Get global nonce for transaction ordering
         *global_nonce += 1;
@@ -671,7 +715,8 @@ impl PassWalletManager {
         // Build transaction based on asset type
         let (raw_transaction, actual_gas_price, actual_gas_limit) = match asset.token_type {
             TokenType::ETH => {
-                let gas_price_final = gas_price.unwrap_or(20_000_000_000); // 20 gwei default
+                // Use provided gas price or reasonable default
+                let gas_price_final = gas_price.unwrap_or(5_000_000_000); // 5 gwei default for Sepolia
                 let gas_limit_final = gas_limit.unwrap_or(21_000); // standard ETH transfer
                 let tx = self.build_eth_transaction(
                     to_address,
@@ -692,7 +737,8 @@ impl PassWalletManager {
                         .ok_or_else(|| anyhow!("ERC20 contract address not found"))?
                 )?;
                 
-                let gas_price_final = gas_price.unwrap_or(20_000_000_000); // 20 gwei default
+                // Use provided gas price or reasonable default
+                let gas_price_final = gas_price.unwrap_or(5_000_000_000); // 5 gwei default for Sepolia
                 let gas_limit_final = gas_limit.unwrap_or(60_000); // standard ERC20 transfer
                 let tx = self.build_erc20_transaction(
                     contract_address,
@@ -846,6 +892,8 @@ impl PassWalletManager {
         outbox.retain(|w| w.nonce != nonce);
         Ok(())
     }
+
+
 }
 
 #[cfg(test)]

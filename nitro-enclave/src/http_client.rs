@@ -164,6 +164,7 @@ struct WithdrawToExternalRequest {
     gas_price: Option<u64>,
     gas_limit: Option<u64>,
     chain_id: u64,
+    override_nonce: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -853,7 +854,8 @@ async fn withdraw_to_external_handler(Json(request): Json<WithdrawToExternalRequ
             "destination": request.destination,
             "gas_price": request.gas_price,
             "gas_limit": request.gas_limit,
-            "chain_id": request.chain_id
+            "chain_id": request.chain_id,
+            "override_nonce": request.override_nonce
         }
     });
     

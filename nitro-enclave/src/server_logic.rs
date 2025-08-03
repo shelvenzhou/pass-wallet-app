@@ -136,6 +136,7 @@ pub enum Command {
         gas_price: Option<u64>,
         gas_limit: Option<u64>,
         chain_id: u64,
+        override_nonce: Option<u64>,
     },
     GetOutboxQueue,
     RemoveFromOutbox {
@@ -675,7 +676,8 @@ pub fn parse_command(command: &str) -> Result<Response, String> {
             destination, 
             gas_price, 
             gas_limit, 
-            chain_id 
+            chain_id,
+            override_nonce
         } => {
             match PASS_WALLET_MANAGER.withdraw_to_external(
                 &wallet_address, 
@@ -685,7 +687,8 @@ pub fn parse_command(command: &str) -> Result<Response, String> {
                 &destination, 
                 gas_price, 
                 gas_limit, 
-                chain_id
+                chain_id,
+                override_nonce
             ) {
                 Ok((signed_transaction, nonce, actual_gas_price, actual_gas_limit)) => Ok(Response {
                     success: true,
