@@ -634,12 +634,12 @@ impl PassWalletManager {
         gas_price: Option<u64>,
         gas_limit: Option<u64>,
         chain_id: u64
-    ) -> Result<String> {
-        // CRITICAL: Lock the entire withdrawal process to ensure atomicity and sequencing
-        let _global_lock = self.global_nonce.lock().unwrap();
-        
-        // Parse destination address
+    ) -> Result<(String, u64, u64, u64)> {
+        // Parse destination address first (no locks needed)
         let to_address = parse_address(destination)?;
+        
+        // CRITICAL: Lock the entire withdrawal process to ensure atomicity and sequencing
+        let mut global_nonce = self.global_nonce.lock().unwrap();
         
         // Get and validate wallet state
         let mut wallet_state = self.get_wallet(wallet_address)
@@ -660,24 +660,26 @@ impl PassWalletManager {
         let wallet_nonce = wallet_state.nonce;
         
         // Get global nonce for transaction ordering
-        let mut global_nonce = self.global_nonce.lock().unwrap();
         *global_nonce += 1;
         let tx_nonce = *global_nonce;
         drop(global_nonce);
         
         // Build transaction based on asset type
-        let raw_transaction = match asset.token_type {
+        let (raw_transaction, actual_gas_price, actual_gas_limit) = match asset.token_type {
             TokenType::ETH => {
-                self.build_eth_transaction(
+                let gas_price_final = gas_price.unwrap_or(20_000_000_000); // 20 gwei default
+                let gas_limit_final = gas_limit.unwrap_or(21_000); // standard ETH transfer
+                let tx = self.build_eth_transaction(
                     to_address,
                     amount,
                     asset.decimals,
                     wallet_nonce,
-                    gas_price.unwrap_or(20_000_000_000), // 20 gwei default
-                    gas_limit.unwrap_or(21_000), // standard ETH transfer
+                    gas_price_final,
+                    gas_limit_final,
                     chain_id,
                     wallet_address,
-                )?
+                )?;
+                (tx, gas_price_final, gas_limit_final)
             },
             TokenType::ERC20 => {
                 let contract_address = parse_address(
@@ -686,16 +688,19 @@ impl PassWalletManager {
                         .ok_or_else(|| anyhow!("ERC20 contract address not found"))?
                 )?;
                 
-                self.build_erc20_transaction(
+                let gas_price_final = gas_price.unwrap_or(20_000_000_000); // 20 gwei default
+                let gas_limit_final = gas_limit.unwrap_or(60_000); // standard ERC20 transfer
+                let tx = self.build_erc20_transaction(
                     contract_address,
                     to_address.clone(),
                     amount,
                     wallet_nonce,
-                    gas_price.unwrap_or(20_000_000_000), // 20 gwei default
-                    gas_limit.unwrap_or(60_000), // standard ERC20 transfer
+                    gas_price_final,
+                    gas_limit_final,
                     chain_id,
                     wallet_address,
-                )?
+                )?;
+                (tx, gas_price_final, gas_limit_final)
             },
             _ => {
                 return Err(anyhow!("Withdrawal not supported for asset type: {:?}", asset.token_type));
@@ -738,7 +743,7 @@ impl PassWalletManager {
             outbox.push_back(pending_withdrawal);
         }
         
-        Ok(raw_transaction)
+        Ok((raw_transaction, tx_nonce, actual_gas_price, actual_gas_limit))
     }
     
     /// Build and sign ETH transaction

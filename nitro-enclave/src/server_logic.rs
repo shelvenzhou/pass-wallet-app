@@ -687,7 +687,7 @@ pub fn parse_command(command: &str) -> Result<Response, String> {
                 gas_limit, 
                 chain_id
             ) {
-                Ok(signed_transaction) => Ok(Response {
+                Ok((signed_transaction, nonce, actual_gas_price, actual_gas_limit)) => Ok(Response {
                     success: true,
                     data: Some(serde_json::json!({
                         "signed_raw_transaction": signed_transaction,
@@ -696,7 +696,10 @@ pub fn parse_command(command: &str) -> Result<Response, String> {
                         "asset_id": asset_id,
                         "amount": amount,
                         "destination": destination,
-                        "chain_id": chain_id
+                        "chain_id": chain_id,
+                        "nonce": nonce,
+                        "gas_price": actual_gas_price,
+                        "gas_limit": actual_gas_limit
                     })),
                     error: None,
                 }),

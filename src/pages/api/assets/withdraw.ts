@@ -56,16 +56,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       asset_id: assetId,
       amount: parseInt(amount),
       destination: destination,
-      chain_id: chain_id
+      chain_id: chain_id,
+      // Always include gas parameters with defaults if not provided
+      gas_price: gas_price ? parseInt(gas_price) : null,
+      gas_limit: gas_limit ? parseInt(gas_limit) : null
     };
-
-    // Add optional gas parameters
-    if (gas_price) {
-      withdrawalRequest.gas_price = parseInt(gas_price);
-    }
-    if (gas_limit) {
-      withdrawalRequest.gas_limit = parseInt(gas_limit);
-    }
 
     // Get enclave URL from environment
     const enclaveUrl = process.env.NEXT_PUBLIC_ENCLAVE_URL || 'http://localhost:5000';

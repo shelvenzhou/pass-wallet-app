@@ -42,3 +42,7 @@ enclave: server
 http-server:
 	cargo run --bin http-server
 
+stop:
+	sudo nitro-cli terminate-enclave --all
+
+start: enclave
