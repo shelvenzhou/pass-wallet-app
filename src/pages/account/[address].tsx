@@ -9,6 +9,7 @@ import TransferModal from '../../components/TransferModal';
 import MessageModal from '../../components/MessageModal';
 import AssetTransferModal from '../../components/AssetTransferModal';
 import WithdrawModal from '../../components/WithdrawModal';
+import { submitTransactionToRPC } from '../../utils/rpcSubmit';
 import { MessageRequest } from '../../types';
 import DomainTransferModal from '../../components/DomainTransferModal';
 
@@ -30,7 +31,9 @@ import {
   faWallet, 
   faCrown, 
   faCopy,
-  faSync
+  faSync,
+  faSpinner,
+  faPaperPlane
 } from '@fortawesome/free-solid-svg-icons';
 
 interface Transaction {
@@ -131,6 +134,7 @@ const AccountDetailsPage: NextPage = () => {
   const [selectedAsset, setSelectedAsset] = useState<{assetId: string, asset: any} | null>(null);
   const [provenanceData, setProvenanceData] = useState<any>(null);
   const [isLoadingProvenance, setIsLoadingProvenance] = useState(false);
+  const [submittingTxs, setSubmittingTxs] = useState<Set<string>>(new Set());
   const [claimingTxId, setClaimingTxId] = useState<string | null>(null);
 
 
@@ -612,6 +616,52 @@ const AccountDetailsPage: NextPage = () => {
       fetchSubaccountAssets();
     }
   }, [router.isReady, accountAddress, connectedAddress]);
+
+  // Handle transaction submission to RPC
+  const handleSubmitTransaction = async (signedRawTransaction: string, recordIndex: number) => {
+    const txId = `${accountAddress}-${recordIndex}`;
+    
+    try {
+      setSubmittingTxs(prev => new Set(prev).add(txId));
+      
+      const result = await submitTransactionToRPC(signedRawTransaction);
+      
+      if (result.success && result.txHash) {
+        toast.success(
+          <div>
+            <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
+              Transaction Submitted Successfully!
+            </div>
+            <div style={{ fontFamily: 'monospace', fontSize: '12px', wordBreak: 'break-all' }}>
+              <strong>TX Hash:</strong> {result.txHash}
+            </div>
+            <div style={{ fontSize: '12px', marginTop: '4px' }}>
+              <a 
+                href={`https://sepolia.etherscan.io/tx/${result.txHash}`} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                style={{ color: '#007bff', textDecoration: 'underline' }}
+              >
+                View on Sepolia Etherscan →
+              </a>
+            </div>
+          </div>,
+          { duration: 8000 }
+        );
+      } else {
+        toast.error(`Failed to submit transaction: ${result.error}`);
+      }
+    } catch (error: any) {
+      console.error('Transaction submission error:', error);
+      toast.error(`Transaction submission failed: ${error.message}`);
+    } finally {
+      setSubmittingTxs(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(txId);
+        return newSet;
+      });
+    }
+  };
 
   // Fetch provenance data when provenance tab is accessed
   useEffect(() => {
@@ -1662,8 +1712,43 @@ const AccountDetailsPage: NextPage = () => {
                                         }}>
                                           {operation.Withdraw.signed_raw_transaction}
                                         </div>
-                                        <div style={{ fontSize: '0.8rem', color: '#6c757d', marginTop: '4px' }}>
-                                          Copy this transaction to submit to any Ethereum RPC endpoint
+                                        <div style={{ 
+                                          display: 'flex', 
+                                          justifyContent: 'space-between', 
+                                          alignItems: 'center',
+                                          marginTop: '8px' 
+                                        }}>
+                                          <div style={{ fontSize: '0.8rem', color: '#6c757d' }}>
+                                            Copy this transaction to submit to any Ethereum RPC endpoint
+                                          </div>
+                                          <button
+                                            onClick={() => handleSubmitTransaction(operation.Withdraw.signed_raw_transaction, index)}
+                                            disabled={submittingTxs.has(`${accountAddress}-${index}`)}
+                                            style={{
+                                              padding: '6px 12px',
+                                              backgroundColor: submittingTxs.has(`${accountAddress}-${index}`) ? '#6c757d' : '#28a745',
+                                              color: 'white',
+                                              border: 'none',
+                                              borderRadius: '4px',
+                                              fontSize: '0.8rem',
+                                              cursor: submittingTxs.has(`${accountAddress}-${index}`) ? 'not-allowed' : 'pointer',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '4px'
+                                            }}
+                                          >
+                                            {submittingTxs.has(`${accountAddress}-${index}`) ? (
+                                              <>
+                                                <FontAwesomeIcon icon={faSpinner} spin />
+                                                Submitting...
+                                              </>
+                                            ) : (
+                                              <>
+                                                <FontAwesomeIcon icon={faPaperPlane} />
+                                                Submit to Sepolia
+                                              </>
+                                            )}
+                                          </button>
                                         </div>
                                       </div>
                                     )}

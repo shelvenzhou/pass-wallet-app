@@ -93,7 +93,7 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
         assetId,
         amount: amountInWei.toString(),
         destination: destinationAddress,
-        chain_id: 1 // Ethereum mainnet
+        chain_id: 11155111 // Sepolia testnet
       };
 
       // Add gas parameters if provided

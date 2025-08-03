@@ -17,7 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       destination,
       gas_price,
       gas_limit,
-      chain_id = 1
+      chain_id = 11155111
     } = req.body;
 
     if (!walletAddress || !connectedAddress || !assetId || !amount || !destination) {
