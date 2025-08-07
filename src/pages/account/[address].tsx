@@ -985,7 +985,29 @@ const AccountDetailsPage: NextPage = () => {
                         fontWeight: '600',
                         color: '#333'
                       }}>
-                        {accountDetails.balance}
+                        {(() => {
+                          // Show loading state while assets are being fetched
+                          if (isLoadingAssets) {
+                            return (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                <FontAwesomeIcon icon={faSpinner} spin style={{ fontSize: '16px' }} />
+                                Loading...
+                              </div>
+                            );
+                          }
+                          
+                          // Get ETH balance from subaccount assets
+                          if (subaccountAssets?.assets?.eth) {
+                            const ethAsset = subaccountAssets.assets.eth;
+                            const ethBalance = formatAmount(
+                              ethAsset.total_balance.toString(), 
+                              ethAsset.decimals, 
+                              ethAsset.symbol
+                            );
+                            return ethBalance;
+                          }
+                          return "0.0000 ETH";
+                        })()}
                       </div>
                     </div>
 
@@ -1543,7 +1565,9 @@ const AccountDetailsPage: NextPage = () => {
                       <p style={{ color: '#666' }}>No asset transactions recorded yet</p>
                     ) : (
                       <div style={{ overflowY: 'auto', maxHeight: '600px' }}>
-                        {provenanceData.provenance_records.map((record: any, index: number) => {
+                        {provenanceData.provenance_records
+                          .sort((a: any, b: any) => b.timestamp - a.timestamp) // Sort by timestamp descending (most recent first)
+                          .map((record: any, index: number) => {
                           const operation = record.operation;
                           const timestamp = new Date(record.timestamp * 1000).toLocaleString();
                           
