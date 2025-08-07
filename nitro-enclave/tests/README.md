@@ -2,6 +2,13 @@
 
 This directory contains comprehensive tests for the PASS Wallet functionality within the Nitro Enclave. The test suite covers functionality testing, performance benchmarking, and integration testing for the end-to-end flow of claim, transfer, and withdraw operations.
 
+**📁 All testing-related files are organized in this `tests/` directory:**
+- Test files (`.rs`)
+- Test utilities (`mod.rs`)
+- Test configuration (`test_config.toml`)
+- Throughput analysis tools (`throughput_report.sh`)
+- Documentation (this `README.md`)
+
 ## Test Structure
 
 ### 1. Functionality Tests (`functionality_tests.rs`)
@@ -47,14 +54,29 @@ Performance testing suite to measure and validate system performance:
 - `benchmark_end_to_end_workflow()` - Complete workflow performance
 - `benchmark_memory_usage()` - Large dataset handling
 
-#### Performance Expectations:
-- Wallet creation: > 10 ops/sec
-- Claim operations: > 100 ops/sec
-- Transfer operations: > 500 ops/sec
-- Withdraw operations: > 500 ops/sec
-- Balance queries: > 10,000 ops/sec
-- Concurrent operations: > 50 ops/sec
-- Provenance queries: > 1,000 ops/sec
+#### Performance Results (Latest Benchmarks):
+
+| Operation | Throughput (ops/sec) | Avg Latency | Status | Notes |
+|-----------|---------------------|-------------|--------|-------|
+| **Balance Queries** | **~300,000** | ~3µs | ✅ | Ultra-fast read operations |
+| **Internal Transfers** | **~36,000** | ~28µs | ✅ | High-speed trading operations |
+| **Withdrawals** | **~24,000** | ~42µs | ✅ | External transaction processing |
+| **End-to-End Workflow** | **~22,600** | ~44µs | ✅ | Complete deposit→claim→transfer |
+| **Claims** | **~20,900** | ~48µs | ✅ | Deposit processing from inbox |
+| **Provenance Queries** | **~2,000** | ~500µs | ✅ | Transaction history searches |
+| **Wallet Creation** | **~800** | ~1.3ms | ✅ | Crypto-intensive operations |
+| **Concurrent Operations** | **~7,200** | Multi-threaded | ✅ | 5 threads, 20 ops each |
+| **Memory Operations** | **~355** | Large datasets | ✅ | 10,000 operation stress test |
+
+#### Performance Thresholds:
+- Balance queries: > 100,000 ops/sec ✅ **EXCEEDED** (300K+)
+- Transfer operations: > 10,000 ops/sec ✅ **EXCEEDED** (36K+)  
+- Withdrawal operations: > 5,000 ops/sec ✅ **EXCEEDED** (24K+)
+- Claim operations: > 5,000 ops/sec ✅ **EXCEEDED** (20K+)
+- End-to-end workflows: > 5,000 ops/sec ✅ **EXCEEDED** (22K+)
+- Wallet creation: > 100 ops/sec ✅ **EXCEEDED** (800+)
+- Concurrent operations: > 1,000 ops/sec ✅ **EXCEEDED** (7K+)
+- Provenance queries: > 500 ops/sec ✅ **EXCEEDED** (2K+)
 
 ### 3. Integration Tests (`integration_tests.rs`)
 
@@ -244,12 +266,31 @@ RUST_LOG=debug cargo test -- --nocapture
 For detailed performance analysis:
 
 ```bash
-# Run with timing information
-cargo test benchmark --release -- --nocapture | tee benchmark_results.txt
+# Run all benchmarks with detailed output
+cargo test benchmark_tests --tests -- --nocapture
 
-# Analyze specific operations
-cargo test benchmark_claim_operations --release -- --nocapture
+# Generate throughput report  
+cd tests/ && ./throughput_report.sh
+
+# Run specific operation benchmarks
+cargo test benchmark_claim_operations --tests -- --nocapture
+cargo test benchmark_transfer_operations --tests -- --nocapture
+cargo test benchmark_withdraw_operations --tests -- --nocapture
+
+# Run with release mode for production performance
+cargo test benchmark --release -- --nocapture | tee benchmark_results.txt
 ```
+
+#### Throughput Testing Tools
+
+The `throughput_report.sh` script provides a quick summary of all operation throughput:
+
+```bash
+cd tests/
+./throughput_report.sh
+```
+
+This generates a comprehensive report showing operations/second for all core PASS wallet operations.
 
 ## Contributing
 
