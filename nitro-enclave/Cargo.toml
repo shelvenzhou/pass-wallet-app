@@ -36,4 +36,9 @@ lazy_static = "1.4"
 # Transaction building and signing dependencies  
 rlp = "0.5"
 
+[dev-dependencies]
+# Additional dependencies for testing
+tokio-test = "0.4"
+criterion = "0.5"
+
 [workspace]
