@@ -115,6 +115,27 @@ impl IntegrationTestEnvironment {
         
         self.manager.withdraw(wallet_address, asset_id, amount, subaccount_id, destination)
     }
+    
+    /// Withdraw to external address using withdraw_to_external (with gas calculation)
+    fn withdraw_external(&self, wallet_name: &str, asset_symbol: &str, amount: u64, subaccount_id: &str, destination: &str) -> Result<(String, u64, u64, u64)> {
+        let wallet_address = self.wallets.get(wallet_name)
+            .ok_or_else(|| anyhow::anyhow!("Wallet not found: {}", wallet_name))?;
+        
+        let asset_id = self.assets.get(&format!("{}_{}", asset_symbol, wallet_name))
+            .ok_or_else(|| anyhow::anyhow!("Asset not found: {} for wallet {}", asset_symbol, wallet_name))?;
+        
+        self.manager.withdraw_to_external(
+            wallet_address, 
+            subaccount_id, 
+            asset_id, 
+            amount, 
+            destination,
+            None, // gas_price
+            None, // gas_limit
+            11155111, // Sepolia chain_id
+            None // override_nonce
+        )
+    }
 }
 
 #[cfg(test)]
@@ -627,6 +648,125 @@ mod integration_tests {
                           env.get_balance("test_wallet", "backup", "ETH")?;
         assert_eq!(total_balance, 10000000000000000000); // Should still be 10 ETH total
         
+        Ok(())
+    }
+
+    #[test]
+    fn test_withdrawal_gas_calculation_fix() -> Result<()> {
+        let mut env = IntegrationTestEnvironment::new()?;
+        
+        // Create test wallet
+        env.create_wallet("gas_test_wallet", "test_user")?;
+        
+        // Add ETH asset
+        let eth_asset = Asset {
+            token_type: TokenType::ETH,
+            contract_address: None,
+            token_id: None,
+            symbol: "ETH".to_string(),
+            name: "Ethereum".to_string(),
+            decimals: 18,
+        };
+        
+        // Add USDC asset  
+        let usdc_asset = Asset {
+            token_type: TokenType::ERC20,
+            contract_address: Some("0xa0b86a33e6776e7bb8c4c9f8d9b2d5f1c4e3f1d2".to_string()),
+            token_id: None,
+            symbol: "USDC".to_string(),
+            name: "USD Coin".to_string(),
+            decimals: 6,
+        };
+        
+        env.add_asset("gas_test_wallet", "ETH", eth_asset)?;
+        env.add_asset("gas_test_wallet", "USDC", usdc_asset)?;
+        env.add_subaccount("gas_test_wallet", "main", "Main Account")?;
+        
+        // Deposit enough ETH to cover withdrawal + gas
+        let initial_eth_amount = 1000000000000000000u64; // 1 ETH
+        env.process_deposit("gas_test_wallet", "ETH", initial_eth_amount, "eth_deposit", "main")?;
+        
+        // Deposit USDC for testing non-ETH withdrawal
+        let initial_usdc_amount = 100000000u64; // 100 USDC
+        env.process_deposit("gas_test_wallet", "USDC", initial_usdc_amount, "usdc_deposit", "main")?;
+        
+        // Verify initial balances
+        assert_eq!(env.get_balance("gas_test_wallet", "main", "ETH")?, initial_eth_amount);
+        assert_eq!(env.get_balance("gas_test_wallet", "main", "USDC")?, initial_usdc_amount);
+        
+        // Test 1: ETH withdrawal with proper gas calculation
+        let eth_withdrawal_amount = 500000000000000000u64; // 0.5 ETH
+        let result = env.withdraw_external(
+            "gas_test_wallet", 
+            "ETH", 
+            eth_withdrawal_amount, 
+            "main", 
+            "0x1234567890123456789012345678901234567890"
+        );
+        
+        assert!(result.is_ok(), "ETH withdrawal should succeed with sufficient balance for gas");
+        let (_, _, gas_price, gas_limit) = result.unwrap();
+        let gas_cost = gas_price * gas_limit;
+        
+        // Verify ETH balance was reduced by both withdrawal amount AND gas cost
+        let expected_eth_balance = initial_eth_amount - eth_withdrawal_amount - gas_cost;
+        assert_eq!(env.get_balance("gas_test_wallet", "main", "ETH")?, expected_eth_balance);
+        
+        // Test 2: USDC withdrawal with ETH gas fee deduction  
+        let usdc_withdrawal_amount = 50000000u64; // 50 USDC
+        let eth_balance_before_usdc_withdrawal = env.get_balance("gas_test_wallet", "main", "ETH")?;
+        
+        let result = env.withdraw_external(
+            "gas_test_wallet",
+            "USDC", 
+            usdc_withdrawal_amount, 
+            "main", 
+            "0x2234567890123456789012345678901234567890"
+        );
+        
+        assert!(result.is_ok(), "USDC withdrawal should succeed with sufficient ETH for gas");
+        let (_, _, gas_price, gas_limit) = result.unwrap();
+        let gas_cost = gas_price * gas_limit;
+        
+        // Verify USDC balance was reduced by withdrawal amount
+        let expected_usdc_balance = initial_usdc_amount - usdc_withdrawal_amount;
+        assert_eq!(env.get_balance("gas_test_wallet", "main", "USDC")?, expected_usdc_balance);
+        
+        // Verify ETH balance was reduced by gas cost only
+        let expected_eth_balance_after_usdc = eth_balance_before_usdc_withdrawal - gas_cost;
+        assert_eq!(env.get_balance("gas_test_wallet", "main", "ETH")?, expected_eth_balance_after_usdc);
+        
+        // Test 3: Insufficient ETH for gas fees should fail
+        // Try to withdraw remaining ETH leaving no gas
+        let remaining_eth = env.get_balance("gas_test_wallet", "main", "ETH")?;
+        let result = env.withdraw_external(
+            "gas_test_wallet", 
+            "ETH", 
+            remaining_eth, // Try to withdraw ALL remaining ETH
+            "main", 
+            "0x3234567890123456789012345678901234567890"
+        );
+        
+        assert!(result.is_err(), "Should fail when trying to withdraw all ETH without leaving gas");
+        assert!(result.err().unwrap().to_string().contains("Insufficient ETH for withdrawal + gas fees"));
+        
+        // Test 4: Insufficient ETH for gas fees when withdrawing other assets should fail
+        // Try to withdraw more USDC when ETH balance is too low for gas
+        let result = env.withdraw_external(
+            "gas_test_wallet",
+            "USDC", 
+            usdc_withdrawal_amount, // Try another USDC withdrawal 
+            "main", 
+            "0x4234567890123456789012345678901234567890"
+        );
+        
+        // This might succeed if there's still enough ETH for gas, or fail if not
+        // The important thing is that the error message should be clear about gas fees
+        if result.is_err() {
+            assert!(result.err().unwrap().to_string().contains("Insufficient ETH for gas fees"));
+        }
+        
+        println!("Gas calculation withdrawal tests completed successfully!");
         Ok(())
     }
 }

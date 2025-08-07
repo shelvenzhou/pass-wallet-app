@@ -660,11 +660,7 @@ impl PassWalletManager {
             return Err(anyhow!("Insufficient balance: {} available, {} requested", current_balance, amount));
         }
 
-        // Check sufficient ETH balance for gas fees
-        let eth_asset_id = "ETH"; // Assuming ETH asset ID is "ETH"
-        let current_eth_balance = wallet_state.get_balance(subaccount_id, eth_asset_id);
-        
-        // Calculate estimated gas cost to validate ETH balance
+        // Calculate estimated gas cost first
         let estimated_gas_price = gas_price.unwrap_or(5_000_000_000); // 5 gwei default for Sepolia
         let estimated_gas_limit = match asset.token_type {
             TokenType::ETH => gas_limit.unwrap_or(21_000),
@@ -676,22 +672,29 @@ impl PassWalletManager {
         
         let total_gas_cost = estimated_gas_price * estimated_gas_limit;
         
-        // For ETH withdrawals, check that balance covers both amount + gas
-        // For other assets, check that ETH balance covers gas
-        if asset_id == eth_asset_id {
+        // Find ETH asset for gas fee calculation
+        let eth_asset_id = wallet_state.assets.iter()
+            .find(|(_, asset)| matches!(asset.token_type, TokenType::ETH))
+            .map(|(id, _)| id.clone())
+            .ok_or_else(|| anyhow!("No ETH asset found in wallet for gas fee calculation"))?;
+        
+        let current_eth_balance = wallet_state.get_balance(subaccount_id, &eth_asset_id);
+        
+        // Check gas fee requirements
+        if asset_id == &eth_asset_id {
             // Withdrawing ETH: need amount + gas fees
             let total_eth_needed = amount + total_gas_cost;
             if current_eth_balance < total_eth_needed {
                 return Err(anyhow!(
-                    "Insufficient ETH for withdrawal + gas fees: {} ETH available, {} needed ({} withdrawal + {} gas)", 
+                    "Insufficient ETH for withdrawal + gas fees: {} wei available, {} wei needed ({} withdrawal + {} gas)", 
                     current_eth_balance, total_eth_needed, amount, total_gas_cost
                 ));
             }
         } else {
-            // Withdrawing other asset: need ETH for gas fees
+            // Withdrawing other asset: need ETH for gas fees only
             if current_eth_balance < total_gas_cost {
                 return Err(anyhow!(
-                    "Insufficient ETH for gas fees: {} ETH available, {} needed for gas", 
+                    "Insufficient ETH for gas fees: {} wei available, {} wei needed for gas", 
                     current_eth_balance, total_gas_cost
                 ));
             }
@@ -757,8 +760,21 @@ impl PassWalletManager {
             }
         };
         
-        // Update wallet balance
+        // Update wallet balances
         wallet_state.set_balance(subaccount_id, asset_id, current_balance - amount);
+        
+        // For ETH withdrawals, also deduct gas fees from ETH balance
+        // For other assets, deduct gas fees from ETH balance
+        if asset_id == &eth_asset_id {
+            // ETH withdrawal: balance already reduced by withdrawal amount above, 
+            // now also deduct gas fees from the same balance
+            let updated_eth_balance = wallet_state.get_balance(subaccount_id, &eth_asset_id);
+            wallet_state.set_balance(subaccount_id, &eth_asset_id, updated_eth_balance - total_gas_cost);
+        } else {
+            // Other asset withdrawal: deduct gas fees from ETH balance
+            let current_eth_balance = wallet_state.get_balance(subaccount_id, &eth_asset_id);
+            wallet_state.set_balance(subaccount_id, &eth_asset_id, current_eth_balance - total_gas_cost);
+        }
         
         // Add to provenance history
         wallet_state.history.push(ProvenanceRecord {
