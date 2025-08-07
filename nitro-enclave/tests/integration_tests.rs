@@ -303,16 +303,16 @@ mod integration_tests {
         env.transfer("enterprise_wallet", "WBTC", 100000000, "treasury", "reserves")?; // 1 BTC to reserves
         
         // Operations transfers some funds to development
-        env.transfer("enterprise_wallet", "ETH", 5000000000000000000, "operations", "development")?; // 5 ETH
+        env.transfer("enterprise_wallet", "ETH", 500000000000000000, "operations", "development")?; // 0.5 ETH
         env.transfer("enterprise_wallet", "USDC", 50000000000, "operations", "development")?; // 50,000 USDC
         
         // Simulate departmental spending (withdrawals)
         let withdrawals = vec![
-            ("development", "ETH", 10000000000000000000u64, "0xdev1111111111111111111111111111111111111"), // 10 ETH
+            ("development", "ETH", 1000000000000000000u64, "0xdev1111111111111111111111111111111111111"), // 1 ETH
             ("development", "USDC", 100000000000u64, "0xdev2222222222222222222222222222222222222"), // 100,000 USDC
-            ("marketing", "ETH", 8000000000000000000u64, "0xmkt1111111111111111111111111111111111111"), // 8 ETH
+            ("marketing", "ETH", 500000000000000000u64, "0xmkt1111111111111111111111111111111111111"), // 0.5 ETH
             ("marketing", "USDC", 75000000000u64, "0xmkt2222222222222222222222222222222222222"), // 75,000 USDC
-            ("operations", "ETH", 5000000000000000000u64, "0xops1111111111111111111111111111111111111"), // 5 ETH
+            ("operations", "ETH", 500000000000000000u64, "0xops1111111111111111111111111111111111111"), // 0.5 ETH
             ("operations", "USDC", 25000000000u64, "0xops2222222222222222222222222222222222222"), // 25,000 USDC
         ];
         
@@ -325,13 +325,13 @@ mod integration_tests {
         assert_eq!(env.get_balance("enterprise_wallet", "treasury", "USDC")?, 250000000000); // 250,000 USDC remaining
         assert_eq!(env.get_balance("enterprise_wallet", "treasury", "WBTC")?, 400000000); // 4 BTC remaining
         
-        assert_eq!(env.get_balance("enterprise_wallet", "development", "ETH")?, 3500000000000000000); // 3+0.5-0 = 3.5 ETH
+        assert_eq!(env.get_balance("enterprise_wallet", "development", "ETH")?, 2500000000000000000); // 3+0.5-1 = 2.5 ETH
         assert_eq!(env.get_balance("enterprise_wallet", "development", "USDC")?, 250000000000); // 300+50-100 = 250k USDC
         
-        assert_eq!(env.get_balance("enterprise_wallet", "marketing", "ETH")?, 2000000000000000000); // 2 ETH
+        assert_eq!(env.get_balance("enterprise_wallet", "marketing", "ETH")?, 1500000000000000000); // 2-0.5 = 1.5 ETH
         assert_eq!(env.get_balance("enterprise_wallet", "marketing", "USDC")?, 125000000000); // 200-75 = 125k USDC
         
-        assert_eq!(env.get_balance("enterprise_wallet", "operations", "ETH")?, 1500000000000000000); // 2-0.5 = 1.5 ETH
+        assert_eq!(env.get_balance("enterprise_wallet", "operations", "ETH")?, 1000000000000000000); // 2-0.5-0.5 = 1 ETH
         assert_eq!(env.get_balance("enterprise_wallet", "operations", "USDC")?, 125000000000); // 200-50-25 = 125k USDC
         
         assert_eq!(env.get_balance("enterprise_wallet", "reserves", "ETH")?, 2500000000000000000); // 2.5 ETH
@@ -413,13 +413,21 @@ mod integration_tests {
             }
         }
         
+        // Calculate actual number of withdrawals that occurred
+        let mut withdrawal_count = 0;
+        for i in 0..num_micro_transactions {
+            if i % 50 == 0 && i > 0 {
+                withdrawal_count += 1;
+            }
+        }
+        
         // Verify final state
         let hot_balance = env.get_balance("hft_wallet", "hot", "ETH")?;
         let cold_balance = env.get_balance("hft_wallet", "cold", "ETH")?;
         let total_balance = hot_balance + cold_balance;
         
         // Should have less than original due to withdrawals
-        let expected_withdrawn = (num_micro_transactions / 50) * micro_amount;
+        let expected_withdrawn = withdrawal_count * micro_amount;
         let expected_remaining = 10000000000000000000 - expected_withdrawn;
         
         assert_eq!(total_balance, expected_remaining, 
@@ -428,10 +436,10 @@ mod integration_tests {
         // Verify extensive transaction history
         let wallet_address = env.wallets.get("hft_wallet").unwrap();
         let wallet_state = env.manager.get_wallet(wallet_address).unwrap();
-        
-        let expected_history_count = 1 + num_micro_transactions + (num_micro_transactions / 50); // claim + transfers + withdrawals
+        let expected_history_count = 1 + num_micro_transactions + withdrawal_count; // claim + transfers + withdrawals
         assert_eq!(wallet_state.history.len(), expected_history_count as usize,
-                  "Should have correct number of history entries");
+                  "Should have correct number of history entries: {} claim + {} transfers + {} withdrawals = {}",
+                  1, num_micro_transactions, withdrawal_count, expected_history_count);
         
         Ok(())
     }

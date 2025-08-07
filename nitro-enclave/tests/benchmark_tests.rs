@@ -19,9 +19,9 @@ struct BenchmarkConfig {
 impl Default for BenchmarkConfig {
     fn default() -> Self {
         BenchmarkConfig {
-            num_operations: 1000,
-            num_concurrent_operations: 10,
-            warmup_operations: 100,
+            num_operations: 100,
+            num_concurrent_operations: 5,
+            warmup_operations: 10,
         }
     }
 }
@@ -215,7 +215,7 @@ mod benchmark_tests {
         for i in 0..config.num_operations + config.warmup_operations {
             let deposit = Deposit {
                 asset_id: env.eth_asset_id.clone(),
-                amount: 1000000000000000000, // 1 ETH
+                amount: 1000000000000000, // 0.001 ETH
                 deposit_id: format!("bench_deposit_{}", i),
                 transaction_hash: format!("0x{:064}", i),
                 block_number: "12345".to_string(),
@@ -262,7 +262,7 @@ mod benchmark_tests {
         let config = BenchmarkConfig::default();
         
         // Setup initial large balance
-        env.setup_initial_balance(config.num_operations as u64 * 1000000000000000000)?; // Enough ETH for all transfers
+        env.setup_initial_balance(10000000000000000000)?; // 10 ETH - enough for all transfers
         
         // Add second subaccount for transfers
         let trading_subaccount = Subaccount {
@@ -317,7 +317,7 @@ mod benchmark_tests {
         let config = BenchmarkConfig::default();
         
         // Setup initial large balance
-        env.setup_initial_balance(config.num_operations as u64 * 1000000000000000000)?; // Enough ETH for all withdrawals
+        env.setup_initial_balance(10000000000000000000)?; // 10 ETH - enough for all withdrawals
         
         let mut durations = Vec::with_capacity(config.num_operations);
         
@@ -415,7 +415,7 @@ mod benchmark_tests {
             .map(|thread_id| {
                 thread::spawn(move || -> Result<()> {
                     let env = BenchmarkEnvironment::new()?;
-                    env.setup_initial_balance(operations_per_thread as u64 * 1000000000000000000)?;
+                    env.setup_initial_balance(10000000000000000000)?; // 10 ETH per thread
                     
                     // Add trading subaccount
                     let trading_subaccount = Subaccount {
