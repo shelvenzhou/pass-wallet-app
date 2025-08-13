@@ -78,8 +78,8 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
         // In production, this should properly match the connected address to subaccount ID
         return true;
       })?.[1] || 0;
-    
-    if (amountInWei > connectedSubaccountBalance) {
+
+    if (amountInWei > Number(connectedSubaccountBalance)) {
       toast.error('Insufficient balance');
       return;
     }
@@ -87,7 +87,16 @@ const WithdrawModal: React.FC<WithdrawModalProps> = ({
     try {
       setIsLoading(true);
 
-      const withdrawalRequest = {
+      const withdrawalRequest: {
+        walletAddress: string;
+        connectedAddress: string;
+        assetId: string;
+        amount: string;
+        destination: string;
+        chain_id: number;
+        gas_price?: number;
+        gas_limit?: number;
+      } = {
         walletAddress,
         connectedAddress,
         assetId,
