@@ -486,7 +486,7 @@ mod benchmark_tests {
         println!("Operations per thread: {}", operations_per_thread);
         println!("Total operations: {}", total_operations);
         println!("Total duration: {:?}", total_duration);
-        println!("Operations/second: {:.2}", operations_per_second);
+        println!("Operations/Second: {:.2}", operations_per_second);
         println!("=======================================\n");
 
         // Assert reasonable concurrent performance
@@ -635,7 +635,7 @@ mod benchmark_tests {
         println!("\n=== Memory Usage Benchmark ===");
         println!("Total operations: {}", large_dataset_size);
         println!("Total duration: {:?}", total_duration);
-        println!("Operations/second: {:.2}", operations_per_second);
+        println!("Operations/Second: {:.2}", operations_per_second);
         println!("==============================\n");
 
         // Verify the wallet state is still functional
